@@ -2,11 +2,42 @@ import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.j
 import bs58 from 'bs58';
 import type { BundleWallet } from '../types';
 
-export const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
+const envRpc = (import.meta.env.VITE_SOLANA_RPC_URL as string | undefined)?.trim();
+
+// api.mainnet-beta.solana.com returns HTTP 403 "Access forbidden" for any browser
+// request carrying an Origin header (browsers always send one on cross-origin POST),
+// so it cannot be used from this SPA. Default to a CORS-friendly public RPC and let
+// VITE_SOLANA_RPC_URL point at your own provider (Helius/QuickNode/Alchemy/Triton).
+export const DEFAULT_RPC = envRpc || 'https://solana-rpc.publicnode.com';
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
+// Logs every JSON-RPC request (URL, headers, body) and converts HTTP error
+// responses into a descriptive error instead of a raw fetch failure.
+export async function rpcFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  console.log(
+    `[rpc] POST ${url}\n  headers: ${JSON.stringify(init?.headers ?? {})}\n  body: ${String(init?.body ?? '')}`,
+  );
+  const res = await fetch(input, init);
+  if (res.status >= 400 && res.status !== 429) {
+    let text = '';
+    try {
+      text = await res.clone().text();
+    } catch {
+      /* ignore */
+    }
+    console.error(
+      `[rpc] ${url} rejected: HTTP ${res.status} ${res.statusText}${text ? `\n  body: ${text.slice(0, 500)}` : ''}`,
+    );
+    throw new Error(
+      `RPC endpoint rejected the request (HTTP ${res.status}${res.statusText ? ' ' + res.statusText : ''})`,
+    );
+  }
+  return res;
+}
+
 export function connectionFor(rpc: string): Connection {
-  return new Connection(rpc, 'confirmed');
+  return new Connection(rpc, { commitment: 'confirmed', fetch: rpcFetch });
 }
 
 export function keypairFromSecret(secretB58: string): Keypair {

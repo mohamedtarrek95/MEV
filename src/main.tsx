@@ -5,7 +5,7 @@ import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import App from './App';
 import { ToastProvider } from './components/Toast';
-import { DEFAULT_RPC } from './utils/solana';
+import { DEFAULT_RPC, rpcFetch } from './utils/solana';
 import '@solana/wallet-adapter-react-ui/styles.css';
 import './index.css';
 
@@ -14,7 +14,7 @@ function Root() {
 
   return (
     <React.StrictMode>
-      <ConnectionProvider endpoint={DEFAULT_RPC}>
+      <ConnectionProvider endpoint={DEFAULT_RPC} config={{ fetch: rpcFetch }}>
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
             <ToastProvider>
