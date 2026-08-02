@@ -79,7 +79,8 @@ async function transferLamports(
 ): Promise<void> {
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   const tx = new Transaction({ feePayer: kp.publicKey, blockhash, lastValidBlockHeight });
-  tx.add(...priorityIxs(priorityFeeLamports));
+  const ixs = priorityIxs(priorityFeeLamports);
+  if (ixs.length) tx.add(...ixs);
   tx.add(
     SystemProgram.transfer({
       fromPubkey: kp.publicKey,
@@ -100,7 +101,8 @@ export async function fundWalletTx(
   const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   const tx = new Transaction({ feePayer: masterKp.publicKey, blockhash, lastValidBlockHeight });
-  tx.add(...priorityIxs(priorityFeeLamports));
+  const ixs = priorityIxs(priorityFeeLamports);
+  if (ixs.length) tx.add(...ixs);
   tx.add(
     SystemProgram.transfer({
       fromPubkey: masterKp.publicKey,
@@ -121,7 +123,8 @@ export async function fundWalletTxWallet(
   const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   const tx = new Transaction({ feePayer: wallet.publicKey, blockhash, lastValidBlockHeight });
-  tx.add(...priorityIxs(priorityFeeLamports));
+  const ixs = priorityIxs(priorityFeeLamports);
+  if (ixs.length) tx.add(...ixs);
   tx.add(
     SystemProgram.transfer({
       fromPubkey: wallet.publicKey,

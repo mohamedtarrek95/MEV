@@ -77,6 +77,48 @@ export async function uploadMetadataToPump(create: CreateTokenMetadata): Promise
 export const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 export const PUMPFUN_DECIMALS = 6;
 
+function safeJson(data: unknown): string {
+  try {
+    return JSON.stringify(
+      data,
+      (_key, value) =>
+        typeof value === 'bigint'
+          ? `${value.toString()}n`
+          : value instanceof PublicKey
+            ? value.toBase58()
+            : value,
+      2,
+    );
+  } catch {
+    return String(data);
+  }
+}
+
+export function logFullError(scope: string, fn: string, step: string, err: unknown): void {
+  console.error(`[pumpfun:error] scope=${scope} fn=${fn} step=${step}`);
+  if (err instanceof Error) {
+    console.error(`[pumpfun:error] name=${err.name}`);
+    console.error(`[pumpfun:error] message=${err.message}`);
+    console.error(`[pumpfun:error] stack:\n${err.stack ?? '(no stack)'}`);
+  } else {
+    console.error(`[pumpfun:error] thrown value: ${safeJson(err)}`);
+  }
+  try {
+    const own: Record<string, unknown> = {};
+    for (const key of Object.getOwnPropertyNames(err as object)) {
+      if (key === 'name' || key === 'message' || key === 'stack') continue;
+      own[key] = (err as Record<string, unknown>)[key];
+    }
+    if (Object.keys(own).length > 0) {
+      console.error(
+        `[pumpfun:error] full error object (RPC/HTTP response, simulation logs):\n${safeJson(own)}`,
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface MemeCoinMetadata {
   name: string;
   symbol: string;
@@ -173,17 +215,44 @@ async function imageUrlToBlob(imageUrl?: string): Promise<Blob> {
   return new Blob([bytes], { type: 'image/png' });
 }
 
-async function waitForConfirmation(connection: Connection, sig: string, timeoutMs = 60_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const status = await connection.getSignatureStatus(sig, { searchTransactionHistory: true });
+async function waitForConfirmation(
+  connection: Connection,
+  sig: string,
+  scope = 'waitForConfirmation',
+  timeoutMs = 60_000,
+): Promise<void> {
+  const t0 = Date.now();
+  let lastStatus: string | undefined;
+  while (Date.now() - t0 < timeoutMs) {
+    let status;
+    try {
+      status = await connection.getSignatureStatus(sig, { searchTransactionHistory: true });
+    } catch (err) {
+      logFullError(scope, 'connection.getSignatureStatus', 'poll confirmation status', err);
+      throw err;
+    }
     const value = status?.value;
-    if (value?.err) throw new Error(`Transaction failed: ${JSON.stringify(value.err)}`);
+    if (value?.err) {
+      console.error(
+        `[pumpfun:error] transaction ${sig} FAILED on-chain (elapsed ${Date.now() - t0}ms)`,
+      );
+      console.error(
+        `[pumpfun:error] full RPC getSignatureStatus response:\n${safeJson(status)}`,
+      );
+      throw new Error(`Transaction failed: ${JSON.stringify(value.err)}`);
+    }
     if (value?.confirmationStatus === 'confirmed' || value?.confirmationStatus === 'finalized') {
+      console.log(
+        `[pumpfun:step] confirmation poll status=${value.confirmationStatus} elapsed=${Date.now() - t0}ms`,
+      );
       return;
     }
+    lastStatus = value?.confirmationStatus ?? 'notfound';
     await new Promise((r) => setTimeout(r, 1000));
   }
+  console.error(
+    `[pumpfun:error] confirmation TIMED OUT after ${timeoutMs}ms sig=${sig} lastStatus=${lastStatus}`,
+  );
   throw new Error('Transaction confirmation timed out');
 }
 
@@ -193,26 +262,82 @@ async function buildAndSendWalletTx(
   instructionsTx: Transaction,
   extraSigners: Keypair[],
   priorityFeeLamports?: number,
+  scope = 'buildAndSendWalletTx',
 ): Promise<string> {
+  const t0 = Date.now();
   const full = new Transaction();
-  full.add(...pumpPriorityIxs(priorityFeeLamports));
+  const priorityIx = pumpPriorityIxs(priorityFeeLamports);
+  if (priorityIx.length) full.add(...priorityIx);
   full.add(instructionsTx);
-  const blockhash = await connection.getLatestBlockhash('confirmed');
   full.feePayer = wallet.publicKey;
+  console.log(
+    `[pumpfun:step] STEP 4 transaction built feePayer=${wallet.publicKey.toBase58()} instructions=${full.instructions.length} priorityFeeLamports=${priorityFeeLamports ?? 0} extraSigners=[${extraSigners.map((k) => k.publicKey.toBase58()).join(', ')}] (elapsed ${Date.now() - t0}ms)`,
+  );
+
+  console.log(`[pumpfun:step] STEP 5 latest blockhash requested (elapsed ${Date.now() - t0}ms)`);
+  let blockhash;
+  try {
+    blockhash = await connection.getLatestBlockhash('confirmed');
+  } catch (err) {
+    logFullError(scope, 'connection.getLatestBlockhash', 'STEP 5 latest blockhash requested', err);
+    throw err;
+  }
   full.recentBlockhash = blockhash.blockhash;
   full.lastValidBlockHeight = blockhash.lastValidBlockHeight;
+  console.log(
+    `[pumpfun:step] STEP 6 latest blockhash received blockhash=${blockhash.blockhash} lastValidBlockHeight=${blockhash.lastValidBlockHeight} (elapsed ${Date.now() - t0}ms)`,
+  );
+
   for (const kp of extraSigners) full.partialSign(kp);
-  const signed = await wallet.signTransaction(full);
+
+  let signed: Transaction;
+  try {
+    signed = await wallet.signTransaction(full);
+  } catch (err) {
+    logFullError(scope, 'wallet.signTransaction', 'STEP 7 transaction signed', err);
+    throw err;
+  }
   for (const kp of extraSigners) {
     if (!signed.signatures.some((s) => s.publicKey.equals(kp.publicKey) && s.signature)) {
+      console.log(`[pumpfun:step] re-signing missing extra signer ${kp.publicKey.toBase58()}`);
       signed.partialSign(kp);
     }
   }
-  const sig = await connection.sendRawTransaction(signed.serialize(), {
-    skipPreflight: false,
-    maxRetries: 5,
-  });
-  await waitForConfirmation(connection, sig);
+  console.log(
+    `[pumpfun:step] STEP 7 transaction signed signatures=[${signed.signatures
+      .map((s) => `${s.publicKey.toBase58()}${s.signature ? ':signed' : ':unsigned'}`)
+      .join(', ')}] (elapsed ${Date.now() - t0}ms)`,
+  );
+
+  let serialized: Uint8Array;
+  try {
+    serialized = signed.serialize();
+  } catch (err) {
+    logFullError(scope, 'signed.serialize', 'serialize signed transaction', err);
+    throw err;
+  }
+
+  console.log(
+    `[pumpfun:step] STEP 8 transaction sent skipPreflight=false maxRetries=5 bytes=${serialized.length} (elapsed ${Date.now() - t0}ms)`,
+  );
+  let sig: string;
+  try {
+    sig = await connection.sendRawTransaction(serialized, {
+      skipPreflight: false,
+      maxRetries: 5,
+    });
+  } catch (err) {
+    logFullError(scope, 'connection.sendRawTransaction', 'STEP 8/9 send raw transaction', err);
+    throw err;
+  }
+  console.log(
+    `[pumpfun:step] STEP 9 transaction signature sig=${sig} solscan=https://solscan.io/tx/${sig} (elapsed ${Date.now() - t0}ms)`,
+  );
+
+  await waitForConfirmation(connection, sig, scope);
+  console.log(
+    `[pumpfun:step] STEP 10 confirmation received sig=${sig} (elapsed ${Date.now() - t0}ms)`,
+  );
   return sig;
 }
 
@@ -222,34 +347,68 @@ export async function createMemeCoin(
   metadata: MemeCoinMetadata,
   priorityFeeLamports?: number,
 ): Promise<CreateMemeCoinResult> {
+  const t0 = Date.now();
   const sdk = pumpfunSdk(connection);
   sdk.createTokenMetadata = uploadMetadataToPump;
   const mintKp = Keypair.generate();
-  const file = await imageUrlToBlob(metadata.imageUrl);
-  const metadataRes = await sdk.createTokenMetadata({
-    name: metadata.name,
-    symbol: metadata.symbol,
-    description: metadata.description,
-    file,
-  });
-  const uri = metadataRes?.metadataUri ?? metadataRes?.uri;
-  if (!uri) throw new Error('Metadata upload did not return a URI');
-  const tx = await sdk.getCreateInstructions(
-    creatorWallet.publicKey,
-    metadata.name,
-    metadata.symbol,
-    uri,
-    mintKp,
+  console.log(
+    `[pumpfun:step] createMemeCoin entered mint=${mintKp.publicKey.toBase58()} creator=${creatorWallet.publicKey.toBase58()} priorityFeeLamports=${priorityFeeLamports ?? 0}`,
   );
+
+  const file = await imageUrlToBlob(metadata.imageUrl);
+  let metadataRes;
+  try {
+    metadataRes = await sdk.createTokenMetadata({
+      name: metadata.name,
+      symbol: metadata.symbol,
+      description: metadata.description,
+      file,
+    });
+  } catch (err) {
+    logFullError('createMemeCoin', 'sdk.createTokenMetadata', 'STEP 1 metadata upload', err);
+    throw err;
+  }
+  const uri = metadataRes?.metadataUri ?? metadataRes?.uri;
+  console.log(
+    `[pumpfun:step] STEP 1 metadataUri received uri=${uri ?? '(MISSING)'} raw=${safeJson(metadataRes)} (elapsed ${Date.now() - t0}ms)`,
+  );
+  if (!uri) throw new Error('Metadata upload did not return a URI');
+
+  console.log(
+    `[pumpfun:step] STEP 2 createAndBuy() entered name=${metadata.name} symbol=${metadata.symbol} (elapsed ${Date.now() - t0}ms)`,
+  );
+
+  let createTx: Transaction;
+  try {
+    createTx = await sdk.getCreateInstructions(
+      creatorWallet.publicKey,
+      metadata.name,
+      metadata.symbol,
+      uri,
+      mintKp,
+    );
+  } catch (err) {
+    logFullError('createMemeCoin', 'sdk.getCreateInstructions', 'STEP 3 getCreateInstructions()', err);
+    throw err;
+  }
+  console.log(
+    `[pumpfun:step] STEP 3 getCreateInstructions() done instructions=${createTx.instructions.length} sdkFeePayer=${createTx.feePayer?.toBase58() ?? 'none'} sdkSignatures=[${createTx.signatures
+      .filter((s) => s.signature)
+      .map((s) => s.publicKey.toBase58())
+      .join(', ')}] (elapsed ${Date.now() - t0}ms)`,
+  );
+
   const signature = await buildAndSendWalletTx(
     connection,
     creatorWallet,
-    tx,
+    createTx,
     [mintKp],
     priorityFeeLamports,
+    'createMemeCoin',
   );
+
   console.log(
-    `[pumpfun] coin created mint=${mintKp.publicKey.toBase58()} sig=${signature}`,
+    `[pumpfun:step] createMemeCoin DONE mint=${mintKp.publicKey.toBase58()} sig=${signature} total=${Date.now() - t0}ms`,
   );
   return { mint: mintKp.publicKey.toBase58(), signature };
 }
@@ -307,17 +466,49 @@ export async function buyPumpCoinWithWallet(
   solLamports: number,
   priorityFeeLamports?: number,
 ): Promise<PumpBuyResult> {
+  const t0 = Date.now();
+  console.log(
+    `[pumpfun:step] buyPumpCoinWithWallet entered buyer=${wallet.publicKey.toBase58()} mint=${mint} solLamports=${solLamports} priorityFeeLamports=${priorityFeeLamports ?? 0}`,
+  );
   const sdk = pumpfunSdk(connection);
   const mintPub = new PublicKey(mint);
-  const tokensReceived = await getPumpBuyQuote(connection, mint, solLamports);
-  const tx = await sdk.getBuyInstructionsBySolAmount(
-    wallet.publicKey,
-    mintPub,
-    BigInt(solLamports),
-    500n,
-    'confirmed',
+  let tokensReceived: bigint;
+  try {
+    tokensReceived = await getPumpBuyQuote(connection, mint, solLamports);
+  } catch (err) {
+    logFullError('buyPumpCoinWithWallet', 'getPumpBuyQuote', 'get buy quote', err);
+    throw err;
+  }
+  console.log(
+    `[pumpfun:step] buyPumpCoinWithWallet quote tokensReceived=${tokensReceived.toString()} (elapsed ${Date.now() - t0}ms)`,
   );
-  const signature = await buildAndSendWalletTx(connection, wallet, tx, [], priorityFeeLamports);
+  let tx: Transaction;
+  try {
+    tx = await sdk.getBuyInstructionsBySolAmount(
+      wallet.publicKey,
+      mintPub,
+      BigInt(solLamports),
+      500n,
+      'confirmed',
+    );
+  } catch (err) {
+    logFullError('buyPumpCoinWithWallet', 'sdk.getBuyInstructionsBySolAmount', 'get buy instructions', err);
+    throw err;
+  }
+  console.log(
+    `[pumpfun:step] buyPumpCoinWithWallet getBuyInstructions done instructions=${tx.instructions.length} (elapsed ${Date.now() - t0}ms)`,
+  );
+  const signature = await buildAndSendWalletTx(
+    connection,
+    wallet,
+    tx,
+    [],
+    priorityFeeLamports,
+    'buyPumpCoinWithWallet',
+  );
+  console.log(
+    `[pumpfun:step] buyPumpCoinWithWallet DONE sig=${signature} tokensReceived=${tokensReceived.toString()} (elapsed ${Date.now() - t0}ms)`,
+  );
   return { signature, tokensReceived };
 }
 

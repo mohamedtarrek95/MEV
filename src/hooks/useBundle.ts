@@ -27,6 +27,7 @@ import {
   buyPumpCoinWithWallet,
   createMemeCoin,
   getPumpTokenPriceInSol,
+  logFullError,
   type SigningWallet,
 } from '../utils/pumpfun';
 import { loadState, saveState, clearState } from '../utils/storage';
@@ -188,6 +189,10 @@ export function useBundle() {
     solLamports?: number,
   ) => {
     updateWallet(w.id, { buyStatus: 'pending', lastError: null });
+    const t0 = Date.now();
+    console.log(
+      `[bundle:step] pumpBuyWallet entered wallet=${w.index} addr=${w.publicKey} mint=${mint} solLamports=${solLamports ?? 'auto'}`,
+    );
     try {
       const kp = keypairFromSecret(w.secretKey);
       const bal = await connection.getBalance(kp.publicKey);
@@ -195,8 +200,15 @@ export function useBundle() {
       if (spend <= 0) throw new Error('Insufficient SOL balance to buy');
       const res = await buyPumpTokenTx(connection, kp, mint, spend, feeLamports());
       updateWallet(w.id, { buyStatus: 'success', buyTx: res.sig, averageBuyPrice: res.avgPrice });
+      console.log(
+        `[bundle:step] pumpBuyWallet DONE wallet=${w.index} sig=${res.sig} avgPrice=${res.avgPrice} (elapsed ${Date.now() - t0}ms)`,
+      );
       toast.push('success', `Wallet ${w.index} bought ${label ?? 'coin'} ✅`);
     } catch (e) {
+      console.error(
+        `[bundle:error] pumpBuyWallet FAILED wallet=${w.index} addr=${w.publicKey} mint=${mint} (elapsed ${Date.now() - t0}ms)`,
+      );
+      logFullError('pumpBuyWallet', 'buyPumpTokenTx', `bundle buy wallet ${w.index}`, e);
       updateWallet(w.id, { buyStatus: 'failed', lastError: (e as Error)?.message ?? String(e) });
       toast.push('error', `Wallet ${w.index}: ${(e as Error)?.message ?? String(e)}`);
     }
@@ -395,6 +407,7 @@ export function useBundle() {
     }
     const targets = wallets.filter((w) => w.funded);
     setBusy(true);
+    const launchT0 = Date.now();
     try {
       setPumpProgress({ label: 'Creating coin...', current: 0, total: targets.length });
       const created = await createMemeCoin(
@@ -430,6 +443,9 @@ export function useBundle() {
       setActiveMemeCoin(coin);
       setTokenMint(created.mint);
 
+      console.log(
+        `[bundle:step] STEP 11 bundle buy started mint=${created.mint} wallets=${targets.length} (elapsed ${Date.now() - launchT0}ms)`,
+      );
       for (let i = 0; i < targets.length; i++) {
         setPumpProgress({
           label: `Buying for wallet ${i + 1}/${targets.length}...`,
@@ -440,6 +456,9 @@ export function useBundle() {
         await refreshWallet(targets[i], created.mint);
         await sleep(PUMP_QUEUE_DELAY_MS);
       }
+      console.log(
+        `[bundle:step] STEP 12 bundle buy finished mint=${created.mint} wallets=${targets.length} (elapsed ${Date.now() - launchT0}ms)`,
+      );
       if (targets.length) {
         toast.push('success', `Bundle buy complete for ${targets.length} wallets`);
       } else {
@@ -450,6 +469,10 @@ export function useBundle() {
       await refreshAll(created.mint);
     } catch (e) {
       setPumpProgress(null);
+      console.error(
+        `[bundle:error] launchMemeCoin FAILED (elapsed ${Date.now() - launchT0}ms)`,
+      );
+      logFullError('launchMemeCoin', 'launchMemeCoin', 'coin creation / master buy / bundle buy', e);
       const msg = (e as Error)?.message ?? String(e);
       toast.push('error', `Pump.fun launch failed: ${msg}`);
     } finally {
