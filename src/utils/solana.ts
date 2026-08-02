@@ -4,11 +4,8 @@ import type { BundleWallet } from '../types';
 
 const envRpc = (import.meta.env.VITE_SOLANA_RPC_URL as string | undefined)?.trim();
 
-// api.mainnet-beta.solana.com returns HTTP 403 "Access forbidden" for any browser
-// request carrying an Origin header (browsers always send one on cross-origin POST),
-// so it cannot be used from this SPA. Default to a CORS-friendly public RPC and let
-// VITE_SOLANA_RPC_URL point at your own provider (Helius/QuickNode/Alchemy/Triton).
-export const DEFAULT_RPC = envRpc || 'https://solana-rpc.publicnode.com';
+export const DEFAULT_RPC =
+  envRpc || 'https://mainnet.helius-rpc.com/?api-key=8f5ecd9c-6e46-42dc-9691-f807e5f89558';
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 // Logs every JSON-RPC request (URL, headers, body) and converts HTTP error
@@ -37,7 +34,9 @@ export async function rpcFetch(input: RequestInfo | URL, init?: RequestInit): Pr
 }
 
 export function connectionFor(rpc: string): Connection {
-  return new Connection(rpc, { commitment: 'confirmed', fetch: rpcFetch });
+  const connection = new Connection(rpc, { commitment: 'confirmed', fetch: rpcFetch });
+  console.log('Using Solana RPC:', connection.rpcEndpoint);
+  return connection;
 }
 
 export function keypairFromSecret(secretB58: string): Keypair {
