@@ -10,6 +10,7 @@ interface Props {
   price: number;
   disabled?: boolean;
   onSell: (w: BundleWallet) => void;
+  onDelete: (w: BundleWallet) => void;
 }
 
 function StatusBadge({ status, kind }: { status: WalletStatus; kind: 'buy' | 'sell' }) {
@@ -51,7 +52,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function WalletCard({ wallet: w, price, disabled, onSell }: Props) {
+export function WalletCard({ wallet: w, price, disabled, onSell, onDelete }: Props) {
   const toast = useToast();
   const [showSecret, setShowSecret] = useState(false);
 
@@ -112,13 +113,22 @@ export function WalletCard({ wallet: w, price, disabled, onSell }: Props) {
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <StatusBadge status={w.sellStatus} kind="sell" />
-        <button
-          onClick={() => onSell(w)}
-          disabled={disabled || w.sellStatus === 'pending' || w.tokenBalance <= 0}
-          className="rounded bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-600/30 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Sell
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onDelete(w)}
+            disabled={disabled || w.sellStatus === 'pending'}
+            className="rounded bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-600/30 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => onSell(w)}
+            disabled={disabled || w.sellStatus === 'pending' || w.tokenBalance <= 0}
+            className="rounded bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-600/30 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Sell
+          </button>
+        </div>
       </div>
 
       {w.lastError && (

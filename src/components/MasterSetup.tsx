@@ -152,6 +152,13 @@ export function MasterSetup({ api, onOpenSweep }: Props) {
           Create Bundle Wallets (N)
         </button>
         <button
+          onClick={() => void api.addWallet()}
+          disabled={api.busy || !api.masterPub}
+          className={btn('bg-emerald-700 text-zinc-100 hover:bg-emerald-600')}
+        >
+          Add Wallet to Bundle
+        </button>
+        <button
           onClick={() => void api.buyBundle()}
           disabled={api.busy || api.wallets.length === 0}
           className={btn('bg-cyan-700 text-zinc-950 hover:bg-cyan-600')}
@@ -164,6 +171,13 @@ export function MasterSetup({ api, onOpenSweep }: Props) {
           className={btn('bg-amber-600 text-zinc-950 hover:bg-amber-500')}
         >
           Sell All Bundles
+        </button>
+        <button
+          onClick={() => void api.refreshAll()}
+          disabled={api.busy || api.wallets.length === 0}
+          className={btn('bg-sky-800 text-zinc-100 hover:bg-sky-700')}
+        >
+          Refresh Balances
         </button>
         <button
           onClick={onOpenSweep}

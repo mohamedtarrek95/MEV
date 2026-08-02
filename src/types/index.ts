@@ -34,3 +34,16 @@ export interface SellProgress {
   total: number;
   label: string;
 }
+
+export interface ActiveMemeCoin {
+  mintAddress: string;
+  name: string;
+  ticker: string;
+  image: string;
+}
+
+export interface PumpProgress {
+  label: string;
+  current: number;
+  total: number;
+}
