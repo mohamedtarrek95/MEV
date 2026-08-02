@@ -1,5 +1,13 @@
 import { AnchorProvider } from '@coral-xyz/anchor';
-import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import {
+  ComputeBudgetProgram,
+  Connection,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  Transaction,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import {
   PumpFunSDK,
   type CreateTokenMetadata,
@@ -15,6 +23,12 @@ export interface PumpMetadataUploadResult {
   name?: string;
   symbol?: string;
   [key: string]: unknown;
+}
+
+export interface SigningWallet {
+  publicKey: PublicKey;
+  signTransaction: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>;
+  signAllTransactions: <T extends Transaction | VersionedTransaction>(txs: T[]) => Promise<T[]>;
 }
 
 export async function uploadMetadataToPump(create: CreateTokenMetadata): Promise<PumpMetadataUploadResult> {
@@ -117,6 +131,20 @@ export function pumpPriorityFee(priorityFeeLamports?: number): PriorityFee | und
   return { unitLimit, unitPrice };
 }
 
+function pumpPriorityIxs(priorityFeeLamports?: number) {
+  const ixs = [];
+  if (priorityFeeLamports && priorityFeeLamports > 0) {
+    const units = 400_000;
+    ixs.push(ComputeBudgetProgram.setComputeUnitLimit({ units }));
+    ixs.push(
+      ComputeBudgetProgram.setComputeUnitPrice({
+        microLamports: Math.max(1, Math.floor((priorityFeeLamports * 1_000_000) / units)),
+      }),
+    );
+  }
+  return ixs;
+}
+
 function pumpError(res: TransactionResult): string {
   if (res.error) {
     if (res.error instanceof Error) return res.error.message;
@@ -145,9 +173,52 @@ async function imageUrlToBlob(imageUrl?: string): Promise<Blob> {
   return new Blob([bytes], { type: 'image/png' });
 }
 
+async function waitForConfirmation(connection: Connection, sig: string, timeoutMs = 60_000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await connection.getSignatureStatus(sig, { searchTransactionHistory: true });
+    const value = status?.value;
+    if (value?.err) throw new Error(`Transaction failed: ${JSON.stringify(value.err)}`);
+    if (value?.confirmationStatus === 'confirmed' || value?.confirmationStatus === 'finalized') {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error('Transaction confirmation timed out');
+}
+
+async function buildAndSendWalletTx(
+  connection: Connection,
+  wallet: SigningWallet,
+  instructionsTx: Transaction,
+  extraSigners: Keypair[],
+  priorityFeeLamports?: number,
+): Promise<string> {
+  const full = new Transaction();
+  full.add(...pumpPriorityIxs(priorityFeeLamports));
+  full.add(instructionsTx);
+  const blockhash = await connection.getLatestBlockhash('confirmed');
+  full.feePayer = wallet.publicKey;
+  full.recentBlockhash = blockhash.blockhash;
+  full.lastValidBlockHeight = blockhash.lastValidBlockHeight;
+  for (const kp of extraSigners) full.partialSign(kp);
+  const signed = await wallet.signTransaction(full);
+  for (const kp of extraSigners) {
+    if (!signed.signatures.some((s) => s.publicKey.equals(kp.publicKey) && s.signature)) {
+      signed.partialSign(kp);
+    }
+  }
+  const sig = await connection.sendRawTransaction(signed.serialize(), {
+    skipPreflight: false,
+    maxRetries: 5,
+  });
+  await waitForConfirmation(connection, sig);
+  return sig;
+}
+
 export async function createMemeCoin(
   connection: Connection,
-  creatorKp: Keypair,
+  creatorWallet: SigningWallet,
   metadata: MemeCoinMetadata,
   priorityFeeLamports?: number,
 ): Promise<CreateMemeCoinResult> {
@@ -155,26 +226,32 @@ export async function createMemeCoin(
   sdk.createTokenMetadata = uploadMetadataToPump;
   const mintKp = Keypair.generate();
   const file = await imageUrlToBlob(metadata.imageUrl);
-  const res = await sdk.createAndBuy(
-    creatorKp,
+  const metadataRes = await sdk.createTokenMetadata({
+    name: metadata.name,
+    symbol: metadata.symbol,
+    description: metadata.description,
+    file,
+  });
+  const uri = metadataRes?.metadataUri ?? metadataRes?.uri;
+  if (!uri) throw new Error('Metadata upload did not return a URI');
+  const tx = await sdk.getCreateInstructions(
+    creatorWallet.publicKey,
+    metadata.name,
+    metadata.symbol,
+    uri,
     mintKp,
-    {
-      name: metadata.name,
-      symbol: metadata.symbol,
-      description: metadata.description,
-      file,
-    },
-    0n,
-    500n,
-    pumpPriorityFee(priorityFeeLamports),
-    'confirmed',
-    'confirmed',
   );
-  if (!res.success) throw new Error(pumpError(res));
+  const signature = await buildAndSendWalletTx(
+    connection,
+    creatorWallet,
+    tx,
+    [mintKp],
+    priorityFeeLamports,
+  );
   console.log(
-    `[pumpfun] coin created mint=${mintKp.publicKey.toBase58()} sig=${res.signature ?? ''}`,
+    `[pumpfun] coin created mint=${mintKp.publicKey.toBase58()} sig=${signature}`,
   );
-  return { mint: mintKp.publicKey.toBase58(), signature: res.signature ?? '' };
+  return { mint: mintKp.publicKey.toBase58(), signature };
 }
 
 export async function getPumpBuyQuote(
@@ -221,6 +298,27 @@ export async function buyPumpCoin(
   );
   if (!res.success) throw new Error(pumpError(res));
   return { signature: res.signature ?? '', tokensReceived };
+}
+
+export async function buyPumpCoinWithWallet(
+  connection: Connection,
+  wallet: SigningWallet,
+  mint: string,
+  solLamports: number,
+  priorityFeeLamports?: number,
+): Promise<PumpBuyResult> {
+  const sdk = pumpfunSdk(connection);
+  const mintPub = new PublicKey(mint);
+  const tokensReceived = await getPumpBuyQuote(connection, mint, solLamports);
+  const tx = await sdk.getBuyInstructionsBySolAmount(
+    wallet.publicKey,
+    mintPub,
+    BigInt(solLamports),
+    500n,
+    'confirmed',
+  );
+  const signature = await buildAndSendWalletTx(connection, wallet, tx, [], priorityFeeLamports);
+  return { signature, tokensReceived };
 }
 
 export async function sellPumpCoin(

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { useWallet } from '@solana/wallet-adapter-react';
 import type { ActiveMemeCoin, BundleWallet, PumpProgress } from '../types';
 import {
   connectionFor,
@@ -13,7 +14,7 @@ import {
 import {
   buyTokenTx,
   buyPumpTokenTx,
-  fundWalletTx,
+  fundWalletTxWallet,
   sellTokenTx,
   sellPumpTokenTx,
   sweepWalletTx,
@@ -22,7 +23,12 @@ import {
   RENT_BUFFER_SOL,
 } from '../utils/operations';
 import { getTokenPriceInSol } from '../utils/jupiter';
-import { buyPumpCoin, createMemeCoin, getPumpTokenPriceInSol } from '../utils/pumpfun';
+import {
+  buyPumpCoinWithWallet,
+  createMemeCoin,
+  getPumpTokenPriceInSol,
+  type SigningWallet,
+} from '../utils/pumpfun';
 import { loadState, saveState, clearState } from '../utils/storage';
 import { useToast } from '../components/Toast';
 import { sleep } from '../utils/format';
@@ -32,10 +38,18 @@ const PUMP_QUEUE_DELAY_MS = 2000;
 
 export function useBundle() {
   const toast = useToast();
+  const { publicKey, connected, signTransaction, signAllTransactions } = useWallet();
   const persisted = useMemo(() => loadState(), []);
 
-  const [masterKey, setMasterKey] = useState<string>(persisted?.masterKey ?? '');
-  const [masterPub, setMasterPub] = useState<string>(persisted?.masterPub ?? '');
+  const masterPub = publicKey?.toBase58() ?? '';
+  const signingWallet = useMemo<SigningWallet | null>(
+    () =>
+      publicKey && signTransaction && signAllTransactions
+        ? { publicKey, signTransaction, signAllTransactions }
+        : null,
+    [publicKey, signTransaction, signAllTransactions],
+  );
+
   const [rpcUrl, setRpcUrl] = useState<string>(persisted?.rpcUrl ?? DEFAULT_RPC);
   const [tokenMint, setTokenMint] = useState<string>(persisted?.tokenMint ?? '');
   const [solPerWallet, setSolPerWallet] = useState<number>(persisted?.solPerWallet ?? 0.05);
@@ -55,6 +69,7 @@ export function useBundle() {
   } | null>(null);
   const [pumpProgress, setPumpProgress] = useState<PumpProgress | null>(null);
   const [price, setPrice] = useState<number>(0);
+  const [masterSolBalance, setMasterSolBalance] = useState<number>(0);
 
   const connection = useMemo(() => connectionFor(rpcUrl), [rpcUrl]);
   const decCache = useRef<{ mint: string; dec: number }>({ mint: '', dec: 9 });
@@ -66,8 +81,6 @@ export function useBundle() {
 
   useEffect(() => {
     saveState({
-      masterKey,
-      masterPub,
       rpcUrl,
       tokenMint,
       solPerWallet,
@@ -79,8 +92,6 @@ export function useBundle() {
       activeMemeCoin,
     });
   }, [
-    masterKey,
-    masterPub,
     rpcUrl,
     tokenMint,
     solPerWallet,
@@ -97,17 +108,6 @@ export function useBundle() {
 
   const updateWallet = (id: string, patch: Partial<BundleWallet>) => {
     setWallets((prev) => prev.map((w) => (w.id === id ? { ...w, ...patch } : w)));
-  };
-
-  const deriveFromKey = (key: string) => {
-    try {
-      const kp = keypairFromSecret(key);
-      setMasterPub(kp.publicKey.toBase58());
-      return kp;
-    } catch {
-      setMasterPub('');
-      return null;
-    }
   };
 
   const feeLamports = () =>
@@ -136,6 +136,20 @@ export function useBundle() {
     return priceCache.current.mint === mint ? priceCache.current.price : 0;
   };
 
+  const refreshMasterBalance = async () => {
+    if (!masterPub) {
+      setMasterSolBalance(0);
+      return;
+    }
+    const bal = await getSolBalance(connection, masterPub);
+    setMasterSolBalance(bal);
+  };
+
+  useEffect(() => {
+    void refreshMasterBalance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterPub, connection]);
+
   const refreshWallet = async (w: BundleWallet, mintOverride?: string) => {
     const mint = mintOverride ?? tokenMint;
     const sol = await getSolBalance(connection, w.publicKey);
@@ -160,6 +174,7 @@ export function useBundle() {
   };
 
   const refreshAll = async (mintOverride?: string) => {
+    await refreshMasterBalance();
     for (const w of wallets) {
       await refreshWallet(w, mintOverride);
       await sleep(150);
@@ -190,8 +205,14 @@ export function useBundle() {
   const fundAndBuyOne = async (w: BundleWallet) => {
     updateWallet(w.id, { buyStatus: 'pending', lastError: null });
     try {
-      const masterKp = keypairFromSecret(masterKey);
-      const sig = await fundWalletTx(connection, masterKp, w.publicKey, solPerWallet, feeLamports());
+      if (!signingWallet) throw new Error('Connect a wallet to fund bundle wallets');
+      const sig = await fundWalletTxWallet(
+        connection,
+        signingWallet,
+        w.publicKey,
+        solPerWallet,
+        feeLamports(),
+      );
       updateWallet(w.id, { funded: true, fundedTx: sig, initialInvested: solPerWallet });
       toast.push('success', `Wallet ${w.index} funded (+${solPerWallet} SOL)`);
       if (autoBuy && tokenMint) {
@@ -215,8 +236,8 @@ export function useBundle() {
   };
 
   const createWallets = async () => {
-    if (!masterKey || !masterPub) {
-      toast.push('error', 'Enter a valid Master Wallet Private Key first');
+    if (!connected || !signingWallet) {
+      toast.push('error', 'Connect a wallet first');
       return;
     }
     if (tokenMint && tokenMint.length !== 44) {
@@ -240,8 +261,8 @@ export function useBundle() {
   };
 
   const addWallet = async () => {
-    if (!masterKey || !masterPub) {
-      toast.push('error', 'Enter a valid Master Wallet Private Key first');
+    if (!connected || !signingWallet) {
+      toast.push('error', 'Connect a wallet first');
       return;
     }
     const w = createWallet(wallets.length);
@@ -356,8 +377,8 @@ export function useBundle() {
   ) => {
     const cleanName = name.trim();
     const cleanTicker = ticker.trim().toUpperCase().slice(0, 10);
-    if (!masterKey || !masterPub) {
-      toast.push('error', 'Enter a valid Master Wallet Private Key first');
+    if (!signingWallet) {
+      toast.push('error', 'Connect a wallet to launch');
       return;
     }
     if (!cleanName) {
@@ -375,12 +396,10 @@ export function useBundle() {
     const targets = wallets.filter((w) => w.funded);
     setBusy(true);
     try {
-      const masterKp = keypairFromSecret(masterKey);
-
       setPumpProgress({ label: 'Creating coin...', current: 0, total: targets.length });
       const created = await createMemeCoin(
         connection,
-        masterKp,
+        signingWallet,
         {
           name: cleanName,
           symbol: cleanTicker,
@@ -393,7 +412,13 @@ export function useBundle() {
 
       setPumpProgress({ label: 'Master buying...', current: 0, total: 1 });
       const masterBuyLamports = Math.floor(initialBuySol * LAMPORTS_PER_SOL);
-      await buyPumpCoin(connection, masterKp, created.mint, masterBuyLamports, feeLamports());
+      await buyPumpCoinWithWallet(
+        connection,
+        signingWallet,
+        created.mint,
+        masterBuyLamports,
+        feeLamports(),
+      );
       toast.push('success', `Master bought ${initialBuySol} SOL of ${cleanTicker}`);
 
       const coin: ActiveMemeCoin = {
@@ -469,14 +494,12 @@ export function useBundle() {
   };
 
   const emergencySweep = async () => {
-    if (!masterKey || !masterPub) {
-      toast.push('error', 'Master key required');
+    const dest = withdrawAddr || masterPub;
+    if (!dest) {
+      toast.push('error', 'Connect a wallet (or set a withdrawal address) first');
       return;
     }
-    const dest = withdrawAddr || masterPub;
-    const masterKp = keypairFromSecret(masterKey);
-    const total = wallets.length + 1;
-    setSellAllProgress({ current: 0, total, label: 'Emergency sweep' });
+    setSellAllProgress({ current: 0, total: wallets.length, label: 'Emergency sweep' });
     setBusy(true);
     try {
       const isPump = isActivePumpCoin(tokenMint);
@@ -484,7 +507,7 @@ export function useBundle() {
         const w = wallets[i];
         setSellAllProgress({
           current: i + 1,
-          total,
+          total: wallets.length,
           label: `Sweeping wallet ${i + 1} / ${wallets.length}`,
         });
         try {
@@ -500,31 +523,6 @@ export function useBundle() {
         }
         await sleep(300);
       }
-      setSellAllProgress({ current: total, total, label: 'Sweeping master wallet' });
-      if (tokenMint) {
-        try {
-          if (isPump) {
-            await sweepWalletPumpTx(
-              connection,
-              masterKp,
-              tokenMint,
-              dest === masterPub ? '' : dest,
-              feeLamports(),
-            );
-          } else {
-            await sweepWalletTx(
-              connection,
-              masterKp,
-              tokenMint,
-              dest === masterPub ? '' : dest,
-              feeLamports(),
-            );
-          }
-          toast.push('success', 'Master wallet swept');
-        } catch (e) {
-          toast.push('error', `Master sweep failed: ${(e as Error)?.message ?? String(e)}`);
-        }
-      }
       toast.push('success', `Emergency sweep complete → ${dest}`);
       await refreshAll();
     } finally {
@@ -535,14 +533,13 @@ export function useBundle() {
 
   const reset = () => {
     clearState();
-    setMasterKey('');
-    setMasterPub('');
     setTokenMint('');
     setWithdrawAddr('');
     setWallets([]);
     setActiveMemeCoin(null);
     setPumpProgress(null);
     setPrice(0);
+    setMasterSolBalance(0);
     decCache.current = { mint: '', dec: 9 };
     priceCache.current = { mint: '', price: 0, at: 0 };
     toast.push('info', 'All bundle data cleared');
@@ -558,8 +555,9 @@ export function useBundle() {
   }, [wallets.length, busy, sellAllProgress, tokenMint, activeMemeCoin]);
 
   return {
-    masterKey,
     masterPub,
+    masterSolBalance,
+    connection,
     rpcUrl,
     tokenMint,
     solPerWallet,
@@ -573,8 +571,6 @@ export function useBundle() {
     sellAllProgress,
     pumpProgress,
     price,
-    setMasterKey,
-    setMasterPub,
     setRpcUrl,
     setTokenMint,
     setSolPerWallet,
@@ -582,7 +578,6 @@ export function useBundle() {
     setAutoBuy,
     setWalletCount,
     setWithdrawAddr,
-    deriveFromKey,
     createWallets,
     addWallet,
     deleteWallet,

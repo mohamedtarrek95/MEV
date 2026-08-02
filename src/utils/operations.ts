@@ -17,6 +17,7 @@ import {
   getPumpBuyQuote,
   PUMPFUN_DECIMALS,
   sellPumpCoin,
+  type SigningWallet,
 } from './pumpfun';
 
 export const FEE_BPS = 50;
@@ -110,13 +111,38 @@ export async function fundWalletTx(
   return sendRawAndConfirm(connection, tx, [masterKp]);
 }
 
+export async function fundWalletTxWallet(
+  connection: Connection,
+  wallet: SigningWallet,
+  destPubkey: string,
+  amountSol: number,
+  priorityFeeLamports?: number,
+): Promise<string> {
+  const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  const tx = new Transaction({ feePayer: wallet.publicKey, blockhash, lastValidBlockHeight });
+  tx.add(...priorityIxs(priorityFeeLamports));
+  tx.add(
+    SystemProgram.transfer({
+      fromPubkey: wallet.publicKey,
+      toPubkey: new PublicKey(destPubkey),
+      lamports,
+    }),
+  );
+  const signed = await wallet.signTransaction(tx);
+  const sig = await connection.sendRawTransaction(signed.serialize(), {
+    skipPreflight: false,
+    maxRetries: 5,
+  });
+  await waitForConfirmation(connection, sig);
+  return sig;
+}
+
 export interface BuyResult {
   sig: string;
   avgPrice: number;
   spendLamports: number;
-}
-
-export async function buyTokenTx(
+}export async function buyTokenTx(
   connection: Connection,
   walletKp: Keypair,
   mint: string,

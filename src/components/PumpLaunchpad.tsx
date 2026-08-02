@@ -33,7 +33,7 @@ export function PumpLaunchpad({ api }: { api: BundleApi }) {
         Meme Coin Creation (Pump.fun)
       </h2>
       <p className="mb-5 text-xs text-zinc-600">
-        Creates a token on Pump.fun using the MASTER wallet, then bundle-buys with every funded
+        Creates a token on Pump.fun using the connected wallet, then bundle-buys with every funded
         bundle wallet. Program ID:{' '}
         <span className="font-mono text-zinc-500">6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P</span>
       </p>

@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { BundleApi } from '../hooks/useBundle';
+import { WalletConnectCard } from './WalletConnectCard';
 import { Spinner } from './Spinner';
 
 const inputCls =
@@ -26,45 +27,13 @@ interface Props {
 }
 
 export function MasterSetup({ api, onOpenSweep }: Props) {
-  const [showKey, setShowKey] = useState(false);
-
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+      <div className="mb-4">
+        <WalletConnectCard api={api} />
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Field label="Master Wallet Private Key (Base58)">
-          <div className="flex gap-2">
-            <input
-              type={showKey ? 'text' : 'password'}
-              value={api.masterKey}
-              spellCheck={false}
-              autoComplete="off"
-              placeholder="Enter Base58 private key..."
-              onChange={(e) => {
-                const v = e.target.value;
-                api.setMasterKey(v);
-                api.deriveFromKey(v);
-              }}
-              className={inputCls}
-            />
-            <button
-              type="button"
-              onClick={() => setShowKey((s) => !s)}
-              className="shrink-0 rounded-md border border-zinc-800 px-3 text-xs text-zinc-400 hover:bg-zinc-800"
-            >
-              {showKey ? 'Hide' : 'Show'}
-            </button>
-          </div>
-        </Field>
-
-        <Field label="Master Wallet Public Address">
-          <input
-            value={api.masterPub}
-            readOnly
-            placeholder="Auto-filled from private key"
-            className={`${inputCls} cursor-not-allowed text-zinc-500`}
-          />
-        </Field>
-
         <Field label="RPC Endpoint">
           <input
             value={api.rpcUrl}
@@ -123,7 +92,7 @@ export function MasterSetup({ api, onOpenSweep }: Props) {
           <input
             value={api.withdrawAddr}
             spellCheck={false}
-            placeholder="Defaults to master address"
+            placeholder="Defaults to connected wallet address"
             onChange={(e) => api.setWithdrawAddr(e.target.value)}
             className={inputCls}
           />
@@ -184,7 +153,7 @@ export function MasterSetup({ api, onOpenSweep }: Props) {
           disabled={api.busy || api.wallets.length === 0}
           className={btn('bg-red-700 text-white hover:bg-red-600')}
         >
-          Emergency Sell All (Master Sweep)
+          Emergency Sell All (Sweep)
         </button>
         <button
           onClick={api.reset}

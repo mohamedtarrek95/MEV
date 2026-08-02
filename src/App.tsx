@@ -43,7 +43,8 @@ export default function App() {
         </header>
 
         <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
-          ⚠ WARNING: Private keys are stored in plaintext in this browser's localStorage and memory.
+          ⚠ WARNING: Bundle wallet private keys are stored in plaintext in this browser's
+          localStorage and memory. Master-wallet transactions are signed by your connected wallet.
           This tool is for testing / educational use only. Never run it with funds you are not
           prepared to lose.
         </div>
@@ -85,8 +86,8 @@ export default function App() {
 
               {b.wallets.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-zinc-800 py-16 text-center text-sm text-zinc-600">
-                  No wallets created yet. Enter a master key and hit &quot;Create Bundle Wallets
-                  (N)&quot;.
+                  No wallets created yet. Connect a wallet and hit &quot;Create Bundle Wallets (N)&quot;
+                  to fund and auto-buy.
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -110,8 +111,8 @@ export default function App() {
 
         <ConfirmModal
           open={sweepOpen}
-          title="Emergency Sell All (Master Sweep)"
-          message={`This will use the MASTER private key to sell EVERY token balance from all ${b.wallets.length} bundle wallets (and the master wallet itself) back to SOL and send all proceeds to:\n\n${
+          title="Emergency Sell All (Bundle Sweep)"
+          message={`This will sell EVERY token balance from all ${b.wallets.length} bundle wallets back to SOL and send all proceeds to:\n\n${
             b.withdrawAddr || b.masterPub
           }\n\nThis is irreversible. Proceed?`}
           confirmLabel="Sweep Everything"
