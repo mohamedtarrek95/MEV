@@ -10,8 +10,6 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .filter(Boolean);
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 20);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
-const RETRY_ATTEMPTS = 3;
-const RETRY_BASE_DELAY_MS = 500;
 
 const MAX_NAME_LENGTH = 32;
 const MAX_SYMBOL_LENGTH = 10;
@@ -36,10 +34,28 @@ interface ParsedForm {
   file?: UploadedFile;
 }
 
+class PumpFunHttpError extends Error {
+  statusCode: number;
+  responseBody: string;
+
+  constructor(statusCode: number, responseBody: string) {
+    super(`Pump.fun returned HTTP ${statusCode}`);
+    this.name = 'PumpFunHttpError';
+    this.statusCode = statusCode;
+    this.responseBody = responseBody;
+  }
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
+}
+
+function sendRaw(res: ServerResponse, status: number, body: string, contentType: string): void {
+  res.statusCode = status;
+  res.setHeader('Content-Type', contentType);
+  res.end(body);
 }
 
 function isAllowedOrigin(origin: string | null, host: string | null): boolean {
@@ -171,79 +187,51 @@ function validateForm(form: ParsedForm): string | null {
 async function forwardToPump(
   fields: Record<string, string>,
   file: UploadedFile,
-): Promise<Record<string, unknown>> {
+): Promise<{ status: number; body: unknown; raw: string }> {
   const form = new FormData();
   form.append('file', new Blob([file.buffer], { type: file.mimetype }), file.filename || 'image.png');
-  form.append('name', (fields.name || '').trim());
-  form.append('symbol', (fields.symbol || '').trim());
-  form.append('description', fields.description || '');
-  form.append('twitter', fields.twitter || '');
-  form.append('telegram', fields.telegram || '');
-  form.append('website', fields.website || '');
-  form.append('showName', 'true');
-
-  let lastError: Error | null = null;
-  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
-    console.log(`[pump/upload] attempt ${attempt}/${RETRY_ATTEMPTS} -> ${PUMPFUN_IPFS_URL}`);
-    try {
-      const resp = await fetch(PUMPFUN_IPFS_URL, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'User-Agent': 'mev-bundle-backend/1.0' },
-        body: form,
-      });
-      const text = await resp.text();
-      console.log(`[pump/upload] pump.fun responded ${resp.status}: ${text.slice(0, 400)}`);
-      if (resp.ok) {
-        let parsed: unknown = null;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          parsed = text.trim();
-        }
-        const rec =
-          parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-            ? (parsed as Record<string, unknown>)
-            : {};
-        const metadataUri =
-          typeof rec.metadataUri === 'string' && rec.metadataUri
-            ? rec.metadataUri
-            : typeof parsed === 'string'
-              ? parsed
-              : null;
-        if (typeof metadataUri === 'string' && metadataUri) {
-          console.log(`[pump/upload] success metadataUri=${metadataUri}`);
-          return { metadataUri, ...rec };
-        }
-        lastError = new Error('Pump.fun responded without a metadata URI');
-      } else if (resp.status === 429) {
-        lastError = new Error('Pump.fun rate limit exceeded');
-      } else if (resp.status >= 500) {
-        lastError = new Error(`Pump.fun server error (HTTP ${resp.status})`);
-      } else {
-        lastError = new Error(`Pump.fun returned HTTP ${resp.status}: ${text.slice(0, 200)}`);
-      }
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.error(`[pump/upload] attempt ${attempt} failed: ${lastError.message}`);
-    }
-    if (attempt < RETRY_ATTEMPTS) {
-      const delay = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
-      console.log(`[pump/upload] retrying in ${delay}ms`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
+  for (const [key, value] of Object.entries(fields)) {
+    form.append(key, value);
   }
-  throw lastError ?? new Error('Pump.fun upload failed');
+
+  console.log(`[pump/upload] forwarding to ${PUMPFUN_IPFS_URL}`, {
+    fields,
+    file: { filename: file.filename, mimetype: file.mimetype, size: file.buffer.length },
+  });
+
+  let resp: Response;
+  try {
+    resp = await fetch(PUMPFUN_IPFS_URL, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'User-Agent': 'mev-bundle-backend/1.0' },
+      body: form,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[pump/upload] network error reaching Pump.fun: ${msg}`);
+    throw new Error(`Could not reach Pump.fun IPFS service: ${msg}`);
+  }
+
+  const text = await resp.text();
+  console.log(`[pump/upload] Pump.fun responded ${resp.status}: ${text.slice(0, 1000)}`);
+
+  if (!resp.ok) {
+    throw new PumpFunHttpError(resp.status, text);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = text;
+  }
+  return { status: resp.status, body: parsed, raw: text };
 }
 
 function readableError(err: unknown): string {
   if (err instanceof Error) {
     const m = err.message.toLowerCase();
     if (m.includes('too large')) return 'Image file exceeds the size limit.';
-    if (m.includes('rate limit')) return 'Pump.fun is rate limiting requests. Please try again shortly.';
-    if (m.includes('server error') || m.includes('http 500') || m.includes('http 502')) {
-      return 'Pump.fun upload server error. Please try again shortly.';
-    }
-    if (m.includes('metadata uri')) return 'Pump.fun did not return a metadata URI. Please try again.';
     if (m.includes('fetch failed') || m.includes('enotfound') || m.includes('econn')) {
       return 'Could not reach Pump.fun. Please try again shortly.';
     }
@@ -256,6 +244,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const origin = req.headers.origin || null;
   const host = req.headers.host || null;
   const method = (req.method || 'GET').toUpperCase();
+
+  const setCors = () => {
+    if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
+  };
 
   if (method === 'OPTIONS') {
     if (!isAllowedOrigin(origin, host)) {
@@ -293,9 +285,20 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     form = await parseMultipart(req);
   } catch (err) {
     const status = (err as { statusCode?: number })?.statusCode ?? 400;
+    console.warn(`[pump/upload] multipart parse failed: ${readableError(err)}`);
     sendJson(res, status, { error: readableError(err) });
     return;
   }
+
+  console.log('[pump/upload] incoming request', {
+    origin,
+    host,
+    method,
+    fields: form.fields,
+    file: form.file
+      ? { filename: form.file.filename, mimetype: form.file.mimetype, size: form.file.buffer.length }
+      : null,
+  });
 
   const validationError = validateForm(form);
   if (validationError) {
@@ -306,10 +309,26 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   try {
     const result = await forwardToPump(form.fields, form.file as UploadedFile);
-    if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
-    sendJson(res, 200, result);
+    setCors();
+    console.log(`[pump/upload] returning success status=${result.status}`);
+    sendJson(res, result.status, result.body);
   } catch (err) {
-    console.error('[pump/upload] backend error:', err);
-    sendJson(res, 502, { error: readableError(err) });
+    setCors();
+    if (err instanceof PumpFunHttpError) {
+      const trimmed = err.responseBody.trim();
+      const isJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+      console.log(
+        `[pump/upload] returning Pump.fun error status=${err.statusCode} body=${err.responseBody.slice(0, 1000)}`,
+      );
+      sendRaw(
+        res,
+        err.statusCode,
+        err.responseBody,
+        isJson ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8',
+      );
+      return;
+    }
+    console.error('[pump/upload] forwarding failed:', err);
+    sendJson(res, 502, { error: (err as Error)?.message ?? String(err) });
   }
 }

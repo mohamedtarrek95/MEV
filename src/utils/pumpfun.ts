@@ -1,6 +1,64 @@
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
-import { PumpFunSDK, type PriorityFee, type TransactionResult } from 'pumpdotfun-sdk';
+import {
+  PumpFunSDK,
+  type CreateTokenMetadata,
+  type PriorityFee,
+  type TransactionResult,
+} from 'pumpdotfun-sdk';
+
+const METADATA_UPLOAD_ENDPOINT = '/api/pump/upload';
+
+export interface PumpMetadataUploadResult {
+  metadataUri?: string;
+  image?: string;
+  name?: string;
+  symbol?: string;
+  [key: string]: unknown;
+}
+
+export async function uploadMetadataToPump(create: CreateTokenMetadata): Promise<PumpMetadataUploadResult> {
+  const formData = new FormData();
+  formData.append('file', create.file, 'image.png');
+  formData.append('name', create.name);
+  formData.append('symbol', create.symbol);
+  formData.append('description', create.description);
+  formData.append('twitter', create.twitter ?? '');
+  formData.append('telegram', create.telegram ?? '');
+  formData.append('website', create.website ?? '');
+  formData.append('showName', 'true');
+
+  console.log(`[pumpfun] uploading metadata to ${METADATA_UPLOAD_ENDPOINT}`, {
+    name: create.name,
+    symbol: create.symbol,
+    description: create.description,
+    twitter: create.twitter ?? '',
+    telegram: create.telegram ?? '',
+    website: create.website ?? '',
+    file: { filename: 'image.png', size: create.file.size, type: create.file.type },
+  });
+
+  const resp = await fetch(METADATA_UPLOAD_ENDPOINT, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    body: formData,
+  });
+
+  const text = await resp.text();
+  console.log(`[pumpfun] metadata upload response ${resp.status}`, text.slice(0, 1000));
+
+  if (!resp.ok) {
+    throw new Error(`Metadata upload failed (HTTP ${resp.status}): ${text || 'no response body'}`);
+  }
+  if (!text) {
+    throw new Error('Metadata upload returned an empty response');
+  }
+  try {
+    return JSON.parse(text) as PumpMetadataUploadResult;
+  } catch {
+    throw new Error(`Metadata upload returned invalid JSON: ${text}`);
+  }
+}
 
 export const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 export const PUMPFUN_DECIMALS = 6;
@@ -94,6 +152,7 @@ export async function createMemeCoin(
   priorityFeeLamports?: number,
 ): Promise<CreateMemeCoinResult> {
   const sdk = pumpfunSdk(connection);
+  sdk.createTokenMetadata = uploadMetadataToPump;
   const mintKp = Keypair.generate();
   const file = await imageUrlToBlob(metadata.imageUrl);
   const res = await sdk.createAndBuy(
@@ -112,6 +171,9 @@ export async function createMemeCoin(
     'confirmed',
   );
   if (!res.success) throw new Error(pumpError(res));
+  console.log(
+    `[pumpfun] coin created mint=${mintKp.publicKey.toBase58()} sig=${res.signature ?? ''}`,
+  );
   return { mint: mintKp.publicKey.toBase58(), signature: res.signature ?? '' };
 }
 
