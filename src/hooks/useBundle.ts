@@ -8,6 +8,7 @@ import {
   getSolBalance,
   getTokenBalanceUi,
   getTokenDecimals,
+  isDeprecatedRpc,
   keypairFromSecret,
   DEFAULT_RPC,
 } from '../utils/solana';
@@ -51,7 +52,10 @@ export function useBundle() {
     [publicKey, signTransaction, signAllTransactions],
   );
 
-  const [rpcUrl, setRpcUrl] = useState<string>(persisted?.rpcUrl ?? DEFAULT_RPC);
+  const persistedRpcUrl = persisted?.rpcUrl as string | undefined;
+  const [rpcUrl, setRpcUrl] = useState<string>(
+    persistedRpcUrl && !isDeprecatedRpc(persistedRpcUrl) ? persistedRpcUrl : DEFAULT_RPC,
+  );
   const [tokenMint, setTokenMint] = useState<string>(persisted?.tokenMint ?? '');
   const [solPerWallet, setSolPerWallet] = useState<number>(persisted?.solPerWallet ?? 0.05);
   const [priorityFee, setPriorityFee] = useState<number>(persisted?.priorityFee ?? 0);

@@ -159,6 +159,7 @@ function dummyWallet(kp: Keypair) {
 }
 
 export function pumpfunSdk(connection: Connection): PumpFunSDK {
+  console.log('PumpFun Connection:', connection.rpcEndpoint);
   const provider = new AnchorProvider(connection, dummyWallet(Keypair.generate()), {
     commitment: 'confirmed',
     skipPreflight: false,

@@ -8,6 +8,12 @@ export const DEFAULT_RPC =
   envRpc || 'https://mainnet.helius-rpc.com/?api-key=8f5ecd9c-6e46-42dc-9691-f807e5f89558';
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
+const DEPRECATED_RPCS = ['api.mainnet-beta.solana.com', 'solana-rpc.publicnode.com'];
+
+export function isDeprecatedRpc(rpc: string): boolean {
+  return DEPRECATED_RPCS.some((d) => rpc.includes(d));
+}
+
 // Logs every JSON-RPC request (URL, headers, body) and converts HTTP error
 // responses into a descriptive error instead of a raw fetch failure.
 export async function rpcFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
