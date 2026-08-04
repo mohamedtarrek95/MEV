@@ -1,20 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TrendingCoin, RawDexToken, RawPumpToken } from '../utils/trendingEngine';
+import type { FinalStretchToken, MigratedToken, MigrationCandidate } from '../utils/trendingEngine';
 import {
-  buildTrendingCoin,
-  rankAndSlice,
+  fuzzyMatch,
+  buildMigrationCandidate,
+  rankCandidates,
 } from '../utils/trendingEngine';
 
-const TWITTER_BEARER = import.meta.env.VITE_TWITTER_BEARER_TOKEN as string | undefined;
 const CACHE_TTL_MS = 2 * 60 * 1000;
+const MIGRATED_CACHE_KEY = 'pump-migrated-cache';
+const MIGRATED_CACHE_TTL = 10 * 60 * 1000;
 
 interface CacheEntry {
-  coins: TrendingCoin[];
+  candidates: MigrationCandidate[];
+  timestamp: number;
+}
+
+interface MigratedCacheEntry {
+  tokens: MigratedToken[];
   timestamp: number;
 }
 
 interface ResearchState {
-  coins: TrendingCoin[];
+  candidates: MigrationCandidate[];
   isLoading: boolean;
   error: string | null;
   lastUpdated: number;
@@ -22,202 +29,172 @@ interface ResearchState {
   nextRefreshIn: number;
 }
 
-const TWITTER_HASHTAGS = ['memecoin', 'solana', 'pumpfun', 'moon', 'crypto'];
-
-async function fetchTwitterMentions(): Promise<{ keyword: string; count: number }[]> {
-  if (!TWITTER_BEARER) return [];
+async function fetchFinalStretchTokens(): Promise<FinalStretchToken[]> {
   try {
-    const query = TWITTER_HASHTAGS.map((h) => `#${h}`).join(' OR ');
-    const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(query)}&max_results=100&tweet.fields=public_metrics,created_at`;
-    const resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${TWITTER_BEARER}` },
-    });
+    const resp = await fetch(
+      'https://frontend-api-v3.pump.fun/coins/king-of-the-hill?limit=50&offset=0&includeNsfw=false',
+    );
     if (!resp.ok) {
-      console.warn(`[trending] Twitter API ${resp.status}`);
+      console.warn(`[migration] Pump.fun King-of-Hill API ${resp.status}`);
       return [];
     }
     const data = await resp.json();
-    const counts = new Map<string, number>();
-    for (const tweet of data.data ?? []) {
-      const text: string = tweet.text ?? '';
-      for (const h of TWITTER_HASHTAGS) {
-        if (text.toLowerCase().includes(`#${h}`)) {
-          counts.set(h, (counts.get(h) ?? 0) + 1);
-        }
+    const coins = Array.isArray(data) ? data : [];
+    return coins
+      .filter((c: Record<string, unknown>) => {
+        const status = c.complete as boolean | undefined;
+        const marketCap = (c.usd_market_cap as number) ?? 0;
+        return !status && marketCap > 0;
+      })
+      .slice(0, 50)
+      .map((c: Record<string, unknown>) => ({
+        name: (c.name as string) ?? '',
+        symbol: (c.symbol as string) ?? '',
+        mint: (c.mint as string) ?? '',
+        imageUri: (c.image_uri as string) ?? '',
+        usdMarketCap: (c.usd_market_cap as number) ?? 0,
+        progressPct: Math.min(99, Math.max(1, ((c.usd_market_cap as number) ?? 0) / 69000 * 100)),
+        creator: (c.creator as string) ?? '',
+        createdAt: (c.created_timestamp as string) ?? '',
+      }));
+  } catch (e) {
+    console.warn('[migration] Final Stretch fetch failed:', e);
+    return [];
+  }
+}
+
+async function fetchMigratedTokensCached(): Promise<MigratedToken[]> {
+  try {
+    const raw = localStorage.getItem(MIGRATED_CACHE_KEY);
+    if (raw) {
+      const cached: MigratedCacheEntry = JSON.parse(raw);
+      if (Date.now() - cached.timestamp < MIGRATED_CACHE_TTL) {
+        return cached.tokens;
       }
     }
-    return [...counts.entries()]
-      .map(([keyword, count]) => ({ keyword, count }))
-      .sort((a, b) => b.count - a.count);
-  } catch (e) {
-    console.warn('[trending] Twitter fetch failed:', e);
-    return [];
+  } catch {
+    /* ignore */
   }
-}
 
-async function fetchDexScreenerTrending(): Promise<RawDexToken[]> {
   try {
-    const resp = await fetch('https://api.dexscreener.com/latest/dex/search?q=solana');
+    const resp = await fetch(
+      'https://frontend-api-v3.pump.fun/coins/king-of-the-hill?limit=50&offset=0&includeNsfw=false',
+    );
     if (!resp.ok) {
-      console.warn(`[trending] DexScreener API ${resp.status}`);
+      console.warn(`[migration] Pump.fun migrated API ${resp.status}`);
       return [];
     }
     const data = await resp.json();
-    const pairs = (data.pairs ?? []) as Record<string, unknown>[];
-    const solanaPairs = pairs.filter((p) => p.chainId === 'solana');
-    return solanaPairs.slice(0, 50).map((p) => {
-      const base = (p.baseToken ?? {}) as Record<string, string>;
-      return {
-        symbol: base.symbol ?? '',
-        name: base.name ?? '',
-        address: base.address ?? '',
-        chainId: 'solana',
-        volumeChange24h: 50 + Math.random() * 400,
-        holders: Math.floor(50 + Math.random() * 800),
-        pairAge: Math.floor(1 + Math.random() * 168),
-      };
-    });
-  } catch (e) {
-    console.warn('[trending] DexScreener fetch failed:', e);
-    return [];
-  }
-}
+    const coins = Array.isArray(data) ? data : [];
+    const migrated = coins
+      .filter((c: Record<string, unknown>) => (c.complete as boolean) === true)
+      .slice(0, 200)
+      .map((c: Record<string, unknown>) => ({
+        name: (c.name as string) ?? '',
+        symbol: (c.symbol as string) ?? '',
+        mint: (c.mint as string) ?? '',
+        imageUri: (c.image_uri as string) ?? '',
+        migratedAt: (c.created_timestamp as string) ?? '',
+      }));
 
-async function fetchPumpFunTrending(): Promise<RawPumpToken[]> {
-  try {
-    const resp = await fetch('https://frontend-api-v3.pump.fun/coins/king-of-the-hill?limit=50&offset=0&includeNsfw=false');
-    if (!resp.ok) {
-      console.warn(`[trending] Pump.fun API ${resp.status}`);
-      return [];
+    const cacheEntry: MigratedCacheEntry = { tokens: migrated, timestamp: Date.now() };
+    try {
+      localStorage.setItem(MIGRATED_CACHE_KEY, JSON.stringify(cacheEntry));
+    } catch {
+      /* ignore quota */
     }
-    const data = await resp.json();
-    return (Array.isArray(data) ? data : []).slice(0, 50).map((c: Record<string, unknown>) => ({
-      name: (c.name as string) ?? '',
-      symbol: (c.symbol as string) ?? '',
-      mint: (c.mint as string) ?? '',
-      volume5m: Math.floor(100 + Math.random() * 5000),
-      ageMinutes: Math.floor(1 + Math.random() * 600),
-    }));
+
+    return migrated;
   } catch (e) {
-    console.warn('[trending] Pump.fun fetch failed:', e);
+    console.warn('[migration] Migrated tokens fetch failed:', e);
     return [];
   }
 }
 
-async function fetchFallbackData(): Promise<TrendingCoin[]> {
+async function fetchFallbackData(): Promise<MigrationCandidate[]> {
   try {
     const resp = await fetch('/trending.json');
     if (!resp.ok) return [];
     const data = await resp.json();
-    return (Array.isArray(data) ? data : []).map((c: Record<string, unknown>) =>
-      buildTrendingCoin({
+    return (Array.isArray(data) ? data : [])
+      .filter((c: Record<string, unknown>) => ((c.previousMigrations as number) ?? 0) >= 2)
+      .map((c: Record<string, unknown>) => ({
+        id: `fb-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: (c.name as string) ?? 'Unknown',
         ticker: (c.ticker as string) ?? '???',
         mintAddress: (c.mintAddress as string) ?? '',
-        imageUrl: c.imageUrl as string | undefined,
-        twitterMentions: (c.mentions as number) ?? 0,
-        dexVolumeChangePct: (c.volumeChangePct as number) ?? 0,
-        pumpVolume5m: (c.volume5m as number) ?? 0,
-        ageHours: (c.ageHours as number) ?? 24,
-        source: 'fallback',
-      }),
-    );
+        imageUrl: (c.imageUrl as string) || `https://picsum.photos/seed/${c.ticker}/200/200`,
+        previousMigrations: (c.previousMigrations as number) ?? 0,
+        progressPct: (c.progressPct as number) ?? 50,
+        migrationScore: (c.migrationScore as number) ?? 0,
+        rationale: (c.rationale as string) ?? 'Historical migration pattern detected.',
+        similarNames: (c.similarNames as string[]) ?? [],
+        isLaunched: true,
+      }));
   } catch {
     return [];
   }
 }
 
-function mergeAndRank(
-  twitterData: { keyword: string; count: number }[],
-  dexTokens: RawDexToken[],
-  pumpTokens: RawPumpToken[],
-  fallback: TrendingCoin[],
-): TrendingCoin[] {
-  const coins: TrendingCoin[] = [];
-  const seen = new Set<string>();
+function findPreviousMigrations(
+  finalStretchToken: FinalStretchToken,
+  migratedTokens: MigratedToken[],
+): { count: number; names: string[] } {
+  const matches: string[] = [];
+  for (const mt of migratedTokens) {
+    if (mt.mint === finalStretchToken.mint) continue;
+    if (
+      fuzzyMatch(mt.name, finalStretchToken.name) ||
+      fuzzyMatch(mt.symbol, finalStretchToken.symbol)
+    ) {
+      matches.push(mt.name);
+    }
+  }
+  const unique = [...new Set(matches)];
+  return { count: unique.length, names: unique };
+}
 
-  const dexBySymbol = new Map<string, RawDexToken>();
-  for (const t of dexTokens) {
-    dexBySymbol.set(t.symbol.toLowerCase(), t);
+function buildCandidates(
+  finalStretchTokens: FinalStretchToken[],
+  migratedTokens: MigratedToken[],
+): MigrationCandidate[] {
+  const candidates: MigrationCandidate[] = [];
+  const groupedByName = new Map<string, FinalStretchToken[]>();
+
+  for (const ft of finalStretchTokens) {
+    const key = ft.name.toLowerCase().replace(/[\s_\-]+/g, '');
+    const existing = groupedByName.get(key);
+    if (existing) {
+      existing.push(ft);
+    } else {
+      groupedByName.set(key, [ft]);
+    }
   }
 
-  const dexByAddress = new Map<string, RawDexToken>();
-  for (const t of dexTokens) {
-    if (t.address) dexByAddress.set(t.address, t);
-  }
-
-  for (const tw of twitterData) {
-    const keyword = tw.keyword.toLowerCase();
-    const dexMatch = dexTokens.find(
-      (d) => d.symbol.toLowerCase().includes(keyword) || d.name.toLowerCase().includes(keyword),
+  for (const [, group] of groupedByName) {
+    const primary = group.reduce((best, t) =>
+      t.progressPct > best.progressPct ? t : best,
     );
-    const pumpMatch = pumpTokens.find(
-      (p) => p.symbol.toLowerCase().includes(keyword) || p.name.toLowerCase().includes(keyword),
-    );
 
-    if (seen.has(keyword)) continue;
-    seen.add(keyword);
+    const { count, names } = findPreviousMigrations(primary, migratedTokens);
+    if (count < 2) continue;
 
-    coins.push(
-      buildTrendingCoin({
-        name: dexMatch?.name ?? pumpMatch?.name ?? tw.keyword,
-        ticker: dexMatch?.symbol ?? pumpMatch?.symbol ?? tw.keyword.toUpperCase().slice(0, 6),
-        mintAddress: dexMatch?.address ?? pumpMatch?.mint ?? '',
-        twitterMentions: tw.count,
-        dexVolumeChangePct: dexMatch?.volumeChange24h ?? Math.floor(Math.random() * 200),
-        pumpVolume5m: pumpMatch?.volume5m ?? Math.floor(Math.random() * 1000),
-        ageHours: dexMatch?.pairAge ?? (pumpMatch?.ageMinutes ?? 60) / 60,
-        source: 'merged',
-      }),
-    );
+    const candidate = buildMigrationCandidate({
+      token: primary,
+      previousMigrations: count,
+      similarNames: names,
+      progressPct: primary.progressPct,
+    });
+
+    candidates.push(candidate);
   }
 
-  for (const t of dexTokens) {
-    const sym = t.symbol.toLowerCase();
-    if (seen.has(sym)) continue;
-    seen.add(sym);
-    coins.push(
-      buildTrendingCoin({
-        name: t.name,
-        ticker: t.symbol,
-        mintAddress: t.address,
-        twitterMentions: Math.floor(Math.random() * 100),
-        dexVolumeChangePct: t.volumeChange24h,
-        pumpVolume5m: 0,
-        ageHours: t.pairAge,
-        source: 'dexscreener',
-      }),
-    );
-  }
-
-  for (const t of pumpTokens) {
-    const mint = t.mint;
-    if (!mint || seen.has(mint)) continue;
-    seen.add(mint);
-    coins.push(
-      buildTrendingCoin({
-        name: t.name,
-        ticker: t.symbol,
-        mintAddress: t.mint,
-        twitterMentions: Math.floor(Math.random() * 50),
-        dexVolumeChangePct: Math.floor(50 + Math.random() * 200),
-        pumpVolume5m: t.volume5m,
-        ageHours: t.ageMinutes / 60,
-        source: 'pumpfun',
-      }),
-    );
-  }
-
-  if (coins.length === 0 && fallback.length > 0) {
-    return fallback;
-  }
-
-  return rankAndSlice(coins, 10);
+  return candidates;
 }
 
 export function useTrendingResearch() {
   const [state, setState] = useState<ResearchState>({
-    coins: [],
+    candidates: [],
     isLoading: false,
     error: null,
     lastUpdated: 0,
@@ -225,22 +202,21 @@ export function useTrendingResearch() {
     nextRefreshIn: 0,
   });
   const cacheRef = useRef<CacheEntry | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearTimers = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
-    timerRef.current = null;
     countdownRef.current = null;
   }, []);
 
-  const fetchCoins = useCallback(async (force = false) => {
+  const fetchCandidates = useCallback(async (force = false) => {
     if (!force && cacheRef.current && Date.now() - cacheRef.current.timestamp < CACHE_TTL_MS) {
-      const remaining = Math.ceil((CACHE_TTL_MS - (Date.now() - cacheRef.current.timestamp)) / 1000);
+      const remaining = Math.ceil(
+        (CACHE_TTL_MS - (Date.now() - cacheRef.current.timestamp)) / 1000,
+      );
       setState((s) => ({
         ...s,
-        coins: cacheRef.current!.coins,
+        candidates: cacheRef.current!.candidates,
         lastUpdated: cacheRef.current!.timestamp,
         nextRefreshIn: remaining,
       }));
@@ -250,40 +226,47 @@ export function useTrendingResearch() {
     setState((s) => ({ ...s, isLoading: true, error: null }));
 
     try {
-      const [twResult, dexResult, pumpResult] = await Promise.allSettled([
-        fetchTwitterMentions(),
-        fetchDexScreenerTrending(),
-        fetchPumpFunTrending(),
+      const [finalStretchResult, migratedResult] = await Promise.allSettled([
+        fetchFinalStretchTokens(),
+        fetchMigratedTokensCached(),
       ]);
 
-      const twitterData = twResult.status === 'fulfilled' ? twResult.value : [];
-      const dexTokens = dexResult.status === 'fulfilled' ? dexResult.value : [];
-      const pumpTokens = pumpResult.status === 'fulfilled' ? pumpResult.value : [];
+      const finalStretchTokens =
+        finalStretchResult.status === 'fulfilled' ? finalStretchResult.value : [];
+      const migratedTokens =
+        migratedResult.status === 'fulfilled' ? migratedResult.value : [];
 
       const errors: string[] = [];
-      if (twResult.status === 'rejected') errors.push('Twitter');
-      if (dexResult.status === 'rejected') errors.push('DexScreener');
-      if (pumpResult.status === 'rejected') errors.push('Pump.fun');
+      if (finalStretchResult.status === 'rejected') errors.push('Final Stretch');
+      if (migratedResult.status === 'rejected') errors.push('Migrated tokens');
 
-      let fallbackData: TrendingCoin[] = [];
-      if (twitterData.length === 0 && dexTokens.length === 0 && pumpTokens.length === 0) {
-        fallbackData = await fetchFallbackData();
+      let candidates = buildCandidates(finalStretchTokens, migratedTokens);
+      const ranked = rankCandidates(candidates, 20);
+
+      if (ranked.length === 0) {
+        const fallback = await fetchFallbackData();
+        if (fallback.length > 0) {
+          candidates = fallback;
+        }
       }
 
-      const merged = mergeAndRank(twitterData, dexTokens, pumpTokens, fallbackData);
+      const finalCandidates = ranked.length > 0 ? ranked : candidates;
       const now = Date.now();
 
-      cacheRef.current = { coins: merged, timestamp: now };
+      cacheRef.current = { candidates: finalCandidates, timestamp: now };
 
       const srcParts: string[] = [];
-      if (twitterData.length > 0) srcParts.push(`Twitter (${twitterData.length} tags)`);
-      if (dexTokens.length > 0) srcParts.push(`DexScreener (${dexTokens.length} tokens)`);
-      if (pumpTokens.length > 0) srcParts.push(`Pump.fun (${pumpTokens.length} coins)`);
-      if (fallbackData.length > 0 && merged === fallbackData) srcParts.push('Fallback list');
+      if (finalStretchTokens.length > 0) srcParts.push(`Final Stretch (${finalStretchTokens.length})`);
+      if (migratedTokens.length > 0) srcParts.push(`Migrated DB (${migratedTokens.length})`);
+      if (finalCandidates.length === candidates.length && finalCandidates !== candidates) {
+        /* ranked */
+      } else if (finalCandidates.length > 0 && ranked.length === 0) {
+        srcParts.push('Fallback');
+      }
       const srcSummary = srcParts.length > 0 ? srcParts.join(' | ') : 'No data';
 
       setState({
-        coins: merged,
+        candidates: finalCandidates,
         isLoading: false,
         error: errors.length > 0 ? `${errors.join(', ')} failed. Using available data.` : null,
         lastUpdated: now,
@@ -306,7 +289,7 @@ export function useTrendingResearch() {
       if (cacheRef.current) {
         setState((s) => ({
           ...s,
-          coins: cacheRef.current!.coins,
+          candidates: cacheRef.current!.candidates,
           isLoading: false,
           error: `Fetch failed: ${msg}. Using cached data.`,
           lastUpdated: cacheRef.current!.timestamp,
@@ -314,11 +297,11 @@ export function useTrendingResearch() {
       } else {
         const fallback = await fetchFallbackData();
         setState({
-          coins: fallback,
+          candidates: fallback,
           isLoading: false,
-          error: `Fetch failed: ${msg}. Using fallback list.`,
+          error: `Fetch failed: ${msg}. Using fallback data.`,
           lastUpdated: Date.now(),
-          sourceSummary: 'Fallback list',
+          sourceSummary: 'Fallback',
           nextRefreshIn: 0,
         });
       }
@@ -326,15 +309,15 @@ export function useTrendingResearch() {
   }, [clearTimers]);
 
   useEffect(() => {
-    void fetchCoins();
+    void fetchCandidates();
     return () => clearTimers();
-  }, [fetchCoins, clearTimers]);
+  }, [fetchCandidates, clearTimers]);
 
   const refresh = useCallback(() => {
     cacheRef.current = null;
     clearTimers();
-    void fetchCoins(true);
-  }, [fetchCoins, clearTimers]);
+    void fetchCandidates(true);
+  }, [fetchCandidates, clearTimers]);
 
   return {
     ...state,

@@ -1,46 +1,45 @@
 import { useState } from 'react';
 import type { BundleApi } from '../hooks/useBundle';
 import { useTrendingResearch } from '../hooks/useTrendingResearch';
-import type { TrendingCoin } from '../utils/trendingEngine';
-import { buildAxiomUrl, isLaunched } from '../utils/trendingEngine';
+import type { MigrationCandidate } from '../utils/trendingEngine';
+import { buildAxiomUrl } from '../utils/trendingEngine';
 import { useToast } from './Toast';
 import { Spinner } from './Spinner';
 import { LaunchModal, type LaunchModalData } from './LaunchModal';
 
-function TrendingScoreBar({ score }: { score: number }) {
-  const pct = Math.min(score, 100);
-  const color =
-    score >= 70 ? 'bg-emerald-500' :
-    score >= 45 ? 'bg-cyan-500' :
-    score >= 25 ? 'bg-amber-500' : 'bg-zinc-600';
+function ProgressBar({ pct, color }: { pct: number; color?: string }) {
+  const c =
+    pct >= 80 ? 'bg-emerald-500' :
+    pct >= 50 ? 'bg-cyan-500' :
+    pct >= 25 ? 'bg-amber-500' : 'bg-zinc-600';
   return (
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-20 overflow-hidden rounded-full bg-zinc-800">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${color}`}
-          style={{ width: `${pct}%` }}
+          className={`h-full rounded-full transition-all duration-500 ${color || c}`}
+          style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>
-      <span className="font-mono text-xs text-zinc-400">{score.toFixed(1)}</span>
+      <span className="font-mono text-xs text-zinc-400">{Math.round(pct)}%</span>
     </div>
   );
 }
 
-function RiskBadge({ level }: { level: 'Low' | 'Medium' | 'High' }) {
+function MigrationBadge({ count }: { count: number }) {
   const cls =
-    level === 'Low'
+    count >= 5
       ? 'border-emerald-500/50 text-emerald-400 bg-emerald-950/40'
-      : level === 'Medium'
-        ? 'border-amber-500/50 text-amber-400 bg-amber-950/40'
-        : 'border-red-500/50 text-red-400 bg-red-950/40';
+      : count >= 3
+        ? 'border-cyan-500/50 text-cyan-400 bg-cyan-950/40'
+        : 'border-amber-500/50 text-amber-400 bg-amber-950/40';
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${cls}`}>
-      {level}
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${cls}`}>
+      {count} prev
     </span>
   );
 }
 
-function QuickStat({ label, value, color }: { label: string; value: string; color?: string }) {
+function QuickStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center">
       <div className="font-mono text-sm font-bold text-zinc-200">{value}</div>
@@ -49,20 +48,19 @@ function QuickStat({ label, value, color }: { label: string; value: string; colo
   );
 }
 
-function TrendingCard({
-  coin,
+function CandidateCard({
+  candidate,
   onLaunch,
   expanded,
   onToggle,
 }: {
-  coin: TrendingCoin;
-  onLaunch: (c: TrendingCoin) => void;
+  candidate: MigrationCandidate;
+  onLaunch: (c: MigrationCandidate) => void;
   expanded: boolean;
   onToggle: () => void;
 }) {
   const toast = useToast();
-  const launched = isLaunched(coin.mintAddress);
-  const axiomUrl = launched ? buildAxiomUrl(coin.mintAddress) : '';
+  const axiomUrl = buildAxiomUrl(candidate.mintAddress);
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, a, input')) return;
@@ -70,38 +68,27 @@ function TrendingCard({
       onToggle();
       return;
     }
-    if (!launched) {
-      toast.push('info', 'Launch this coin first to view on Axiom.');
-      return;
-    }
     window.open(axiomUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const glowColor =
-    coin.riskLevel === 'Low'
-      ? 'hover:border-emerald-500/40 hover:shadow-emerald-500/10'
-      : coin.riskLevel === 'Medium'
-        ? 'hover:border-amber-500/40 hover:shadow-amber-500/10'
-        : 'hover:border-red-500/40 hover:shadow-red-500/10';
-
-  const borderGlow =
-    coin.riskLevel === 'Low'
-      ? 'border-emerald-500/20'
-      : coin.riskLevel === 'Medium'
-        ? 'border-amber-500/20'
-        : 'border-red-500/20';
+  const scoreColor =
+    candidate.migrationScore >= 70
+      ? 'border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-emerald-500/10'
+      : candidate.migrationScore >= 45
+        ? 'border-cyan-500/30 hover:border-cyan-500/50 hover:shadow-cyan-500/10'
+        : 'border-amber-500/30 hover:border-amber-500/50 hover:shadow-amber-500/10';
 
   return (
     <div
       className={`group cursor-pointer rounded-xl border bg-zinc-900/60 p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${
-        expanded ? `${borderGlow} shadow-lg` : `border-zinc-800 ${glowColor}`
+        expanded ? `${scoreColor} shadow-lg` : `border-zinc-800 ${scoreColor}`
       }`}
       onClick={handleCardClick}
     >
       <div className="flex items-start gap-3">
         <img
-          src={coin.imageUrl}
-          alt={coin.name}
+          src={candidate.imageUrl}
+          alt={candidate.name}
           className="h-12 w-12 shrink-0 rounded-full border border-zinc-800 object-cover transition-transform duration-300 group-hover:scale-110"
           onError={(e) => {
             (e.target as HTMLImageElement).src =
@@ -110,39 +97,37 @@ function TrendingCard({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between">
-            <div>
-              <span className="font-mono text-sm font-bold text-zinc-100">{coin.name}</span>
-              <span className="ml-2 font-mono text-xs text-cyan-400">{coin.ticker}</span>
+            <div className="min-w-0">
+              <span className="font-mono text-sm font-bold text-zinc-100 truncate">{candidate.name}</span>
+              <span className="ml-2 font-mono text-xs text-cyan-400">{candidate.ticker}</span>
             </div>
-            <RiskBadge level={coin.riskLevel} />
+            <MigrationBadge count={candidate.previousMigrations} />
           </div>
           <div className="mt-1.5">
-            <TrendingScoreBar score={coin.trendingScore} />
+            <div className="mb-0.5 text-[10px] uppercase tracking-wider text-zinc-600">
+              Migration Progress
+            </div>
+            <ProgressBar pct={candidate.progressPct} />
           </div>
         </div>
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-zinc-500 line-clamp-2">
-        {coin.rationale}
+        {candidate.rationale}
       </p>
 
       <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
         <QuickStat
-          label="Mentions"
-          value={coin.quickStats.mentionsLastHour.toLocaleString()}
-          color="text-cyan-400"
+          label="Prev Migrations"
+          value={String(candidate.previousMigrations)}
         />
         <QuickStat
-          label="Vol Change"
-          value={`+${coin.quickStats.volumeChangePct}%`}
-          color="text-fuchsia-400"
+          label="Progress"
+          value={`${Math.round(candidate.progressPct)}%`}
         />
         <QuickStat
-          label="Age"
-          value={coin.quickStats.ageHours < 1
-            ? `${Math.round(coin.quickStats.ageHours * 60)}m`
-            : `${Math.round(coin.quickStats.ageHours)}h`}
-          color="text-emerald-400"
+          label="Score"
+          value={candidate.migrationScore.toFixed(1)}
         />
       </div>
 
@@ -156,60 +141,49 @@ function TrendingCard({
         >
           {expanded ? '▲ Hide details' : '▼ Details'}
         </button>
-        {launched ? (
-          <a
-            href={axiomUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title="View on Axiom.Trade"
-            className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-cyan-400 transition-colors"
-          >
-            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            View on Axiom
-          </a>
-        ) : (
-          <span className="text-[11px] text-amber-500/60" title="Launch this coin first to view on Axiom.">
-            Not launched yet
-          </span>
-        )}
+        <a
+          href={axiomUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title="View on Axiom.Trade"
+          className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-cyan-400 transition-colors"
+        >
+          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+          View on Axiom
+        </a>
       </div>
 
       {expanded && (
         <div className="mt-3 border-t border-zinc-800 pt-3 space-y-2">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Full Rationale
+            Migration Analysis
           </div>
-          <p className="text-xs leading-relaxed text-zinc-400">{coin.rationale}</p>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <p className="text-xs leading-relaxed text-zinc-400">{candidate.rationale}</p>
+          {candidate.similarNames.length > 0 && (
             <div>
-              <span className="text-zinc-600">Source: </span>
-              <span className="text-zinc-400">{coin.source}</span>
-            </div>
-            <div>
-              <span className="text-zinc-600">Launched: </span>
-              <span className={launched ? 'text-emerald-400' : 'text-amber-400'}>
-                {launched ? 'Yes' : 'No'}
+              <span className="text-[10px] text-zinc-600">Previously migrated names: </span>
+              <span className="text-[11px] text-zinc-400">
+                {candidate.similarNames.slice(0, 5).join(', ')}
+                {candidate.similarNames.length > 5 && ` +${candidate.similarNames.length - 5} more`}
               </span>
             </div>
-          </div>
-          {launched && (
-            <div className="text-[11px]">
-              <span className="text-zinc-600">Mint: </span>
-              <span className="font-mono text-zinc-500 break-all">{coin.mintAddress}</span>
-            </div>
           )}
+          <div className="text-[11px]">
+            <span className="text-zinc-600">Mint: </span>
+            <span className="font-mono text-zinc-500 break-all">{candidate.mintAddress}</span>
+          </div>
         </div>
       )}
 
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onLaunch(coin);
+          onLaunch(candidate);
         }}
         className="mt-3 w-full rounded-md bg-fuchsia-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fuchsia-500"
       >
@@ -220,7 +194,7 @@ function TrendingCard({
 }
 
 export function TrendingSuggestor({ api }: { api: BundleApi }) {
-  const { coins, isLoading, error, lastUpdated, sourceSummary, nextRefreshIn, refresh } =
+  const { candidates, isLoading, error, lastUpdated, sourceSummary, nextRefreshIn, refresh } =
     useTrendingResearch();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
@@ -228,15 +202,15 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
   const [modalTitle, setModalTitle] = useState('Launch Meme Coin');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const handleLaunchFromCoin = (coin: TrendingCoin) => {
+  const handleLaunchFromCandidate = (c: MigrationCandidate) => {
     setModalData({
-      name: coin.name,
-      ticker: coin.ticker,
-      description: coin.description,
-      imageUrl: coin.imageUrl,
+      name: c.name,
+      ticker: c.ticker,
+      description: c.rationale,
+      imageUrl: c.imageUrl,
       buyAmount: 0.1,
     });
-    setModalTitle(`Launch ${coin.name} (${coin.ticker})`);
+    setModalTitle(`Launch ${c.name} (${c.ticker})`);
     setModalOpen(true);
   };
 
@@ -257,10 +231,10 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-mono text-sm font-semibold uppercase tracking-wider text-zinc-400">
-            Trending Coin Suggestor
+            Migration Predictor
           </h2>
           <p className="mt-1 text-xs text-zinc-600">
-            Live trending data from Twitter, DexScreener, and Pump.fun. Ranked by composite score.
+            Final Stretch tokens with 2+ previous migrations. Ranked by migration count and progress.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -295,14 +269,19 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
         </div>
       )}
 
-      {isLoading && coins.length === 0 ? (
+      {isLoading && candidates.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <Spinner className="h-8 w-8 text-cyan-400" />
-          <p className="mt-4 font-mono text-sm text-zinc-500">Fetching trending data...</p>
+          <p className="mt-4 font-mono text-sm text-zinc-500">Scanning Final Stretch tokens...</p>
         </div>
-      ) : coins.length === 0 ? (
+      ) : candidates.length === 0 ? (
         <div className="flex flex-col items-center py-16 text-center">
-          <p className="text-sm text-zinc-600">No trending data available. Using fallback list.</p>
+          <p className="text-sm text-zinc-600">
+            No migration candidates found with 2+ previous migrations.
+          </p>
+          <p className="mt-1 text-xs text-zinc-700">
+            Try again later as new tokens enter Final Stretch.
+          </p>
           <button
             onClick={refresh}
             className="mt-4 inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-950/30 px-4 py-2 text-sm font-semibold text-cyan-300 transition-colors hover:bg-cyan-900/40"
@@ -312,13 +291,13 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {coins.map((coin) => (
-            <TrendingCard
-              key={coin.id}
-              coin={coin}
-              onLaunch={handleLaunchFromCoin}
-              expanded={expandedId === coin.id}
-              onToggle={() => setExpandedId(expandedId === coin.id ? null : coin.id)}
+          {candidates.map((c) => (
+            <CandidateCard
+              key={c.id}
+              candidate={c}
+              onLaunch={handleLaunchFromCandidate}
+              expanded={expandedId === c.id}
+              onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
             />
           ))}
         </div>
