@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { BundleApi } from '../hooks/useBundle';
 import { useTrendingResearch } from '../hooks/useTrendingResearch';
 import type { MigrationCandidate } from '../utils/trendingEngine';
@@ -14,8 +14,9 @@ function CandidateCard({
   candidate: MigrationCandidate;
   onLaunch: (c: MigrationCandidate) => void;
 }) {
-  const toast = useToast();
   const axiomUrl = buildAxiomUrl(candidate.mintAddress);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, a, input')) return;
@@ -24,7 +25,9 @@ function CandidateCard({
 
   const handleCopyMint = () => {
     void navigator.clipboard.writeText(candidate.mintAddress);
-    toast.push('success', 'Mint address copied');
+    setCopied(true);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
   };
 
   const scoreColor =
@@ -57,6 +60,25 @@ function CandidateCard({
               </span>
               <span className="ml-2 font-mono text-xs text-cyan-400">{candidate.ticker}</span>
             </div>
+          </div>
+
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 font-mono text-[10px] text-zinc-500 break-all">
+              {candidate.mintAddress}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCopyMint();
+              }}
+              className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                copied
+                  ? 'border-emerald-500/50 bg-emerald-950/40 text-emerald-400'
+                  : 'border-zinc-700 text-zinc-400 hover:border-cyan-500/50 hover:text-cyan-400'
+              }`}
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
           </div>
 
           <div className="mt-2 flex items-center gap-3">
@@ -101,15 +123,7 @@ function CandidateCard({
       )}
 
       <div className="mt-3 flex items-center justify-between">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleCopyMint();
-          }}
-          className="text-[11px] text-zinc-500 hover:text-cyan-400 transition-colors"
-        >
-          Copy Mint
-        </button>
+        <span className="text-[11px] text-zinc-600">Final Stretch · {candidate.progressPct.toFixed(0)}% progress</span>
         <a
           href={axiomUrl}
           target="_blank"

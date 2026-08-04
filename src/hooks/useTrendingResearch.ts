@@ -25,6 +25,8 @@ interface ResearchState {
   nextRefreshIn: number;
 }
 
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
 async function fetchFinalStretchTokens(): Promise<FinalStretchToken[]> {
   const resp = await fetch(
     'https://frontend-api-v3.pump.fun/coins/king-of-the-hill?limit=100&offset=0&includeNsfw=false',
@@ -32,8 +34,19 @@ async function fetchFinalStretchTokens(): Promise<FinalStretchToken[]> {
   if (!resp.ok) throw new Error(`Pump.fun king-of-the-hill HTTP ${resp.status}`);
   const data = await resp.json();
   const coins = Array.isArray(data) ? data : [];
+  const now = Date.now();
   return coins
-    .filter((c: Record<string, unknown>) => (c.complete as boolean) === false)
+    .filter((c: Record<string, unknown>) => {
+      if ((c.complete as boolean) !== false) return false;
+      const ts = c.created_timestamp;
+      if (typeof ts === 'string') {
+        const created = new Date(ts).getTime();
+        if (Number.isFinite(created) && now - created > TWENTY_FOUR_HOURS_MS) return false;
+      } else if (typeof ts === 'number') {
+        if (now - ts > TWENTY_FOUR_HOURS_MS) return false;
+      }
+      return true;
+    })
     .map((c: Record<string, unknown>) => ({
       name: (c.name as string) ?? '',
       symbol: (c.symbol as string) ?? '',
