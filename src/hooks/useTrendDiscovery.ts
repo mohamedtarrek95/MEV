@@ -9,7 +9,7 @@ import { TWENTY_FOUR_HOURS_MS } from '../utils/trends/feedProvider';
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000;
 const TWEET_CACHE_KEY = 'trends-tweet-cache';
 const TWEET_CACHE_TTL = 6 * 60 * 60 * 1000;
-const TRENDS_API = '/api/trends';
+const TRENDS_API = '/api/report?action=trends';
 
 interface BackendReport {
   generatedAt: number;

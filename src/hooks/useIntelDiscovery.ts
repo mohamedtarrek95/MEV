@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MemeNarrative, IntelReport, TokenSuggestion } from '../utils/intel/types';
 import { REFRESH_MS } from '../utils/intel/sources';
 
-const INTEL_API_URL = import.meta.env.VITE_INTEL_API_URL || 'http://localhost:3939/api/intel';
+const INTEL_API_URL = import.meta.env.VITE_INTEL_API_URL || '/api/report?action=intel';
 const CACHE_KEY = 'meme-intel-real-cache';
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
