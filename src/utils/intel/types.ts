@@ -4,12 +4,15 @@ export type SourceId =
   | 'bluesky'
   | 'mastodon'
   | 'nitter'
-  | 'cryptoForums'
-  | 'discordAnnouncements'
   | 'cryptoNews'
-  | 'communityBoards';
+  | 'aiNews'
+  | 'gamingNews'
+  | 'techNews'
+  | 'entertainmentNews'
+  | 'memeWebsites'
+  | 'publicForums';
 
-export type SourceCategory = 'social' | 'crypto';
+export type SourceCategory = 'social' | 'news' | 'community';
 
 export interface SourceMeta {
   id: SourceId;
@@ -30,11 +33,6 @@ export interface Post {
   comments: number;
 }
 
-export interface ExtractedToken {
-  raw: string;
-  normalized: string;
-}
-
 export interface IdeaCluster {
   key: string;
   canonicalName: string;
@@ -48,11 +46,24 @@ export interface IdeaCluster {
   totalEngagement: number;
 }
 
-export interface MemeIdea {
-  id: string;
+export interface TokenSuggestion {
   name: string;
   symbol: string;
   description: string;
+  theme: string;
+  lore: string;
+  mascot: string;
+  colorPalette: string[];
+  logoPrompt: string;
+  bannerPrompt: string;
+  websiteStyle: string;
+  socialBio: string;
+  launchTags: string[];
+}
+
+export interface MemeIdea {
+  id: string;
+  narrative: string;
   trendScore: number;
   mentionCount: number;
   growthPct: number;
@@ -64,9 +75,8 @@ export interface MemeIdea {
   confidencePct: number;
   reason: string;
   evidence: string[];
-  tags: string[];
-  theme: string;
   category: string;
+  token: TokenSuggestion;
 }
 
 export interface ISourceProvider {
