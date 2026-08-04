@@ -1,99 +1,75 @@
-export type Chain = 'solana' | 'base' | 'eth' | 'bsc' | 'arbitrum';
-
 export type SourceId =
   | 'reddit'
   | 'telegram'
   | 'bluesky'
   | 'mastodon'
   | 'nitter'
-  | 'pumpfun'
-  | 'axiom'
-  | 'dexscreener'
-  | 'dextools'
-  | 'geckoterminal'
-  | 'gmgn'
-  | 'bullx'
-  | 'photon'
-  | 'birdeye'
-  | 'jupiter';
+  | 'cryptoForums'
+  | 'discordAnnouncements'
+  | 'cryptoNews'
+  | 'communityBoards';
 
-export interface SourceObservation {
-  sourceId: SourceId;
-  /** Display label for the source. */
-  tokenName: string;
-  tokenSymbol: string;
-  mintAddress?: string;
-  chain: Chain;
-  timestamp: number;
-  mentions?: number;
-  volume?: number;
-  holders?: number;
-  transactions?: number;
-  trendingRank?: number;
-}
+export type SourceCategory = 'social' | 'crypto';
 
-export interface SourceSignal {
-  sourceId: SourceId;
-  tokenName: string;
-  tokenSymbol: string;
-  mintAddress?: string;
-  chain?: Chain;
-  timestamp: number;
-  mentions?: number;
-  volume?: number;
-  holders?: number;
-  transactions?: number;
-  trendingRank?: number;
-  holderChangePct?: number;
-  volumeChangePct?: number;
-}
-
-/** Aggregated evidence for a single source contributing to a token's score. */
-export interface PlatformSignal {
-  sourceId: SourceId;
+export interface SourceMeta {
+  id: SourceId;
   label: string;
-  mentions: number;
-  trendingRank?: number;
-  volume?: number;
-  holders?: number;
-  transactions?: number;
-  holderChangePct?: number;
-  volumeChangePct?: number;
-  firstDetectedAt: number;
+  weight: number;
+  category: SourceCategory;
 }
 
-export interface EvidenceBullet {
-  sourceId: SourceId;
-  text: string;
-}
-
-export interface IntelSuggestion {
+export interface Post {
   id: string;
-  tokenName: string;
-  tokenSymbol: string;
-  mintAddress: string;
-  imageUrl: string;
-  globalTrendScore: number;
-  confidencePct: number;
-  platforms: string[];
-  platformsCount: number;
-  platformSignals: PlatformSignal[];
-  evidence: EvidenceBullet[];
-  tokenAgeMs: number;
-  firstDetectedAt: number;
+  sourceId: SourceId;
+  author: string;
+  text: string;
+  url: string;
+  timestamp: number;
+  likes: number;
+  shares: number;
+  comments: number;
+}
+
+export interface ExtractedToken {
+  raw: string;
+  normalized: string;
+}
+
+export interface IdeaCluster {
+  key: string;
+  canonicalName: string;
+  tokens: string[];
+  posts: Post[];
+  firstSeen: number;
+  lastSeen: number;
+  authors: Set<string>;
+  platforms: Set<SourceId>;
   totalMentions: number;
   totalEngagement: number;
-  progressPct: number;
-  dexscreenerUrl: string;
-  axiomUrl: string;
-  chain: Chain;
-  topReason: string;
 }
 
-export interface IntelReport {
-  generatedAt: number;
-  suggestions: IntelSuggestion[];
-  observationsProcessed: number;
-  windowHours: number;
-  feedSource: string;
+export interface MemeIdea {
+  id: string;
+  name: string;
+  symbol: string;
+  description: string;
+  trendScore: number;
+  mentionCount: number;
+  growthPct: number;
+  uniqueAuthors: number;
+  platformsFound: SourceId[];
+  platformCount: number;
+  firstDetected: number;
+  lastSeen: number;
+  confidencePct: number;
+  reason: string;
+  evidence: string[];
+  tags: string[];
+  theme: string;
+  category: string;
+}
+
+export interface ISourceProvider {
+  sourceId: SourceId;
+  fetch(): Promise<Post[]>;
 }
