@@ -33,7 +33,7 @@ export interface MigrationCandidate {
 
 const AXIOM_BASE = 'https://axiom.trade/?token=';
 
-function normalizeForFuzzy(name: string): string {
+export function normalizeForFuzzy(name: string): string {
   return name
     .toLowerCase()
     .replace(/[\s_\-./\\|,!?~`'"@#$%^&*()+=\[\]{}<>:;]+/g, '')
