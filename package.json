@@ -8,7 +8,6 @@
     "build": "tsc && tsc -p api/tsconfig.json && vite build",
     "preview": "vite preview",
     "intel:worker": "tsx lib/intel/worker.ts",
-    "intel:worker:once": "tsx -e \"import('./lib/intel/worker.js').then(m => m.runScan().then(() => process.exit(0)))\"",
     "trends:worker": "tsx lib/trends/worker.ts",
     "trends:worker:playwright": "cross-env TRENDS_PROVIDER=playwright tsx lib/trends/worker.ts"
   },

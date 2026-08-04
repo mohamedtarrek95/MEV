@@ -4,6 +4,7 @@ import { useIntelDiscovery, generateToken } from '../hooks/useIntelDiscovery';
 import { sourceLabel } from '../utils/intel/sources';
 import type { MemeNarrative } from '../utils/intel/types';
 import { LaunchModal, type LaunchModalData } from './LaunchModal';
+import { IntelAdminPanel } from './IntelAdminPanel';
 import { Spinner } from './Spinner';
 
 // ── score bar ───────────────────────────────────────────────────────
@@ -156,10 +157,11 @@ function NarrativeCard({ narrative, index, onCreateToken }: { narrative: MemeNar
 interface TrendingSuggestorProps { api: BundleApi }
 
 export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
-  const { narratives, loading, error, lastRefresh, refresh } = useIntelDiscovery();
+  const { narratives, loading, error, lastRefresh, refresh, isScraping } = useIntelDiscovery();
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedNarrative, setSelectedNarrative] = useState<MemeNarrative | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const handleCreateToken = useCallback((n: MemeNarrative) => {
     setSelectedNarrative(n);
@@ -196,10 +198,16 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
         <div>
           <h2 className="font-mono text-lg font-bold text-zinc-100">Meme Narrative Engine</h2>
           <p className="text-xs text-zinc-500">
-            Real-time viral narrative discovery from public sources
+            Auto-collecting real viral narratives from public sources
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isScraping && (
+            <span className="flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-950/30 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">
+              <Spinner className="h-2.5 w-2.5" />
+              Scraping...
+            </span>
+          )}
           {lastRefresh && (
             <span className="text-[10px] text-zinc-600">
               Updated {Math.round((Date.now() - lastRefresh) / 60000)}m ago
@@ -213,8 +221,18 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
             className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-zinc-800 disabled:opacity-40">
             {copied ? '✓ Copied!' : '⧉ Copy Report'}
           </button>
+          <button onClick={() => setShowDiagnostics(!showDiagnostics)}
+            className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${showDiagnostics ? 'border-fuchsia-500/40 bg-fuchsia-950/30 text-fuchsia-300' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}>
+            {showDiagnostics ? '✕ Close' : '⚙ Diagnostics'}
+          </button>
         </div>
       </div>
+
+      {showDiagnostics && (
+        <div className="mb-6">
+          <IntelAdminPanel />
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-xs text-amber-300">
@@ -225,11 +243,11 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
       {loading && narratives.length === 0 ? (
         <div className="flex items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-800 py-24 text-sm text-zinc-600">
           <Spinner className="h-5 w-5" />
-          Scanning real public sources for viral narratives...
+          {isScraping ? 'Collecting real data from public sources... This may take a moment on first load.' : 'Loading...'}
         </div>
       ) : narratives.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 py-24 text-center text-sm text-zinc-600">
-          No real meme narratives detected during the selected time window.
+          {error || 'No verified meme narratives found during the last 24 hours.'}
         </div>
       ) : (
         <div className="space-y-4">
@@ -242,9 +260,9 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
       <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/30 p-5">
         <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-3">How It Works</div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs text-zinc-500">
-          <div><span className="font-semibold text-zinc-400">1. Collect</span> — Fetches real posts from Reddit, Bluesky, Hacker News, DexScreener, CoinGecko, GitHub</div>
-          <div><span className="font-semibold text-zinc-400">2. Analyze</span> — Normalizes text, extracts phrases, clusters similar topics, detects patterns</div>
-          <div><span className="font-semibold text-zinc-400">3. Score</span> — Meme Potential Score from mentions, growth, velocity, cross-platform spread, freshness</div>
+          <div><span className="font-semibold text-zinc-400">1. Auto-Collect</span> — API scrapes Reddit, Bluesky, Hacker News, DexScreener, CoinGecko, GitHub on every request (no manual worker needed)</div>
+          <div><span className="font-semibold text-zinc-400">2. Analyze</span> — Normalizes text, extracts phrases, clusters similar topics, detects patterns using fuzzy matching</div>
+          <div><span className="font-semibold text-zinc-400">3. Score</span> — Trend Score from mentions, growth, velocity, cross-platform spread, freshness. Confidence from real evidence only.</div>
           <div><span className="font-semibold text-zinc-400">4. Create</span> — Click "Create Token" to auto-generate name, ticker, description, mascot, and prompts</div>
         </div>
       </div>

@@ -33,7 +33,6 @@ function writeCache(report: IntelReport) {
   } catch { /* ignore */ }
 }
 
-// ── token generation from narrative ─────────────────────────────────
 const NAME_PREFIXES = ['Mega','Ultra','Super','Hyper','Turbo','Epic','Legendary','Cosmic','Neon','Pixel','Cyber','Quantum','Galaxy','Stellar','Alpha','Shadow','Void','Laser','Happy','Wild'];
 
 function hashCode(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return h; }
@@ -63,7 +62,6 @@ export function generateToken(narrative: MemeNarrative): TokenSuggestion {
     'Retro Gaming': `${name} brings retro gaming nostalgia. Born from the ${n} trend.`,
     'Dark Humor': `${name} embraces the void. Born from the ${n} viral moment.`,
   };
-
   const mascotMap: Record<string, string> = {
     'Animals': `A cute ${n} wearing sunglasses and holding a diamond.`,
     'Technology': `A robot ${n} with glowing circuits and a degen grin.`,
@@ -72,7 +70,6 @@ export function generateToken(narrative: MemeNarrative): TokenSuggestion {
     'Retro Gaming': `A pixel-art ${n} in 8-bit style.`,
     'Dark Humor': `A shadowy ${n} with glowing red eyes.`,
   };
-
   const themeMap: Record<string, string> = {
     'Animals': 'Cute & Chaotic', 'Technology': 'AI Meme', 'Space': 'Cosmic Meme',
     'Food': 'Tasty Meme', 'Retro Gaming': '8-Bit Meme', 'Dark Humor': 'Dark Meme',
@@ -88,7 +85,6 @@ export function generateToken(narrative: MemeNarrative): TokenSuggestion {
   return { name, symbol, description: desc, theme, mascot, logoPrompt, bannerPrompt, launchTags };
 }
 
-// ── hook ────────────────────────────────────────────────────────────
 interface UseIntelResult {
   report: IntelReport | null;
   narratives: MemeNarrative[];
@@ -96,6 +92,7 @@ interface UseIntelResult {
   error: string | null;
   lastRefresh: number | null;
   refresh: () => void;
+  isScraping: boolean;
 }
 
 export function useIntelDiscovery(): UseIntelResult {
@@ -104,6 +101,7 @@ export function useIntelDiscovery(): UseIntelResult {
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<number | null>(cached?.generatedAt ?? null);
+  const [isScraping, setIsScraping] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -112,21 +110,31 @@ export function useIntelDiscovery(): UseIntelResult {
     abortRef.current = controller;
     setLoading(true);
     setError(null);
+    setIsScraping(true);
     try {
       console.log(`[intel] fetching from ${INTEL_API_URL}`);
       const res = await fetch(INTEL_API_URL, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.json() as { ok: boolean; report: IntelReport | null; message?: string };
-      if (!body.ok) throw new Error(body.message ?? 'API returned error');
+      const body = await res.json() as {
+        ok: boolean;
+        report: IntelReport | null;
+        message?: string;
+        error?: string;
+      };
+
+      if (!body.ok) throw new Error(body.error ?? body.message ?? 'API returned error');
+
       if (body.report) {
         console.log(`[intel] received ${body.report.narratives.length} narratives from ${body.report.postsProcessed} posts`);
         setReport(body.report);
         writeCache(body.report);
         setLastRefresh(body.report.generatedAt);
+        setError(null);
       } else {
-        console.log('[intel] no report available from backend');
+        const msg = body.message || 'No verified narratives found during the last 24 hours.';
+        console.log(`[intel] no data: ${msg}`);
         setReport(null);
-        setError('No data yet. Start the intel worker: npm run intel:worker');
+        setError(msg);
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -134,6 +142,7 @@ export function useIntelDiscovery(): UseIntelResult {
       setError(err instanceof Error ? err.message : 'Failed to connect to intel backend');
     } finally {
       setLoading(false);
+      setIsScraping(false);
     }
   }, []);
 
@@ -150,5 +159,6 @@ export function useIntelDiscovery(): UseIntelResult {
     error,
     lastRefresh,
     refresh: fetchData,
+    isScraping,
   };
 }

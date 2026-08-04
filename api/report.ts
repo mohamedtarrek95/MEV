@@ -1,12 +1,39 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { loadReport as loadIntelReport, hasRedis, healthCheck } from '../lib/intel/db.js';
+import { loadReport, saveReport, hasRedis, healthCheck, disconnect } from '../lib/intel/db.js';
+import { scrapeAll, type ScrapeResult } from '../lib/intel/scrape.js';
+
+const STALE_MS = 5 * 60 * 1000;
+
+let refreshLock = false;
+let lastScrape: ScrapeResult | null = null;
+let lastRefreshAt = 0;
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
+  res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=30');
   res.end(JSON.stringify(body));
+}
+
+async function doRefresh(): Promise<ScrapeResult> {
+  if (refreshLock && lastScrape && Date.now() - lastRefreshAt < STALE_MS) {
+    return lastScrape;
+  }
+  refreshLock = true;
+  try {
+    const result = await scrapeAll();
+    lastScrape = result;
+    lastRefreshAt = Date.now();
+    if (hasRedis() && result.report) {
+      await saveReport(result.report).catch((err) => {
+        console.error('[api] redis save failed:', err);
+      });
+    }
+    return result;
+  } finally {
+    refreshLock = false;
+  }
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -32,19 +59,66 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return;
   }
 
-  if (action === 'intel') {
-    if (!hasRedis()) {
+  if (action === 'status') {
+    const dbOk = hasRedis() ? await healthCheck() : false;
+    let reportCount = 0;
+    if (hasRedis()) {
+      try {
+        const r = await loadReport();
+        if (r) reportCount = r.narratives.length;
+      } catch { /* ignore */ }
+    }
+    sendJson(res, 200, {
+      ok: true,
+      redis: dbOk,
+      redisConfigured: hasRedis(),
+      lastRefreshAt,
+      isRefreshing: refreshLock,
+      lastScrape: lastScrape
+        ? {
+            scrapedAt: lastScrape.scrapedAt,
+            durationMs: lastScrape.durationMs,
+            totalPosts: lastScrape.totalPosts,
+            totalAccepted: lastScrape.totalAccepted,
+            totalRejected: lastScrape.totalRejected,
+            narratives: lastScrape.report?.narratives.length ?? 0,
+            providers: lastScrape.providers,
+          }
+        : null,
+      reportNarratives: reportCount,
+    });
+    return;
+  }
+
+  if (action === 'refresh') {
+    try {
+      const result = await doRefresh();
       sendJson(res, 200, {
         ok: true,
-        report: null,
-        source: 'intel',
-        message: 'REDIS_URL not configured. Deploy worker to populate data.',
+        report: result.report,
+        scrape: {
+          durationMs: result.durationMs,
+          totalPosts: result.totalPosts,
+          totalAccepted: result.totalAccepted,
+          totalRejected: result.totalRejected,
+          providers: result.providers,
+        },
       });
-      return;
+    } catch (err) {
+      console.error('[api] refresh failed:', err);
+      sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : String(err) });
     }
+    return;
+  }
 
+  if (action === 'intel') {
     try {
-      const report = await loadIntelReport();
+      let report = hasRedis() ? await loadReport() : null;
+      if (!report || Date.now() - report.generatedAt > STALE_MS) {
+        console.log('[api] data stale or missing, triggering on-demand scrape...');
+        const result = await doRefresh();
+        report = result.report;
+      }
       if (!report) {
         sendJson(res, 200, {
           ok: true,
@@ -56,11 +130,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
       sendJson(res, 200, { ok: true, report, source: 'intel' });
     } catch (err) {
-      console.error('[api] intel report fetch failed:', err);
-      sendJson(res, 500, { ok: false, error: 'Failed to load report' });
+      console.error('[api] intel error:', err);
+      sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : String(err) });
     }
     return;
   }
 
-  sendJson(res, 400, { error: 'missing ?action=intel or ?action=health' });
+  sendJson(res, 400, { error: 'missing ?action=intel, ?action=status, ?action=health, or ?action=refresh' });
 }
