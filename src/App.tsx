@@ -8,6 +8,7 @@ import { ProgressBar } from './components/ProgressBar';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PumpLaunchpad } from './components/PumpLaunchpad';
 import { TrendingSuggestor } from './components/TrendingSuggestor';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { formatToken } from './utils/format';
 
 type Tab = 'bundle' | 'pump' | 'suggest';
@@ -112,7 +113,9 @@ export default function App() {
         ) : tab === 'pump' ? (
           <PumpLaunchpad api={b} />
         ) : (
-          <TrendingSuggestor api={b} />
+          <ErrorBoundary label="Meme Intel">
+            <TrendingSuggestor api={b} />
+          </ErrorBoundary>
         )}
 
         <ConfirmModal
