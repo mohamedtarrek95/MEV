@@ -25,6 +25,7 @@ export interface MemeSuggestion {
   source: string;
   trendingTopic: string;
   mintAddress: string;
+  chainId: string;
   rationale: Rationale;
 }
 
@@ -52,6 +53,7 @@ export interface DexScreenerToken {
   volumeChange24h: number;
   holders: number;
   address: string;
+  chainId: string;
 }
 
 const PLACEHOLDER_MINT_PREFIX = 'SOLANA_PLACEHOLDER_';
@@ -92,11 +94,11 @@ const SENTIMENT_KEYWORDS = {
   negative: ['rug', 'dump', 'crash', 'scam', 'bear', 'loss', 'down', 'rekt', 'exit', 'sell'],
 };
 
-export function buildDexScreenerUrl(mintAddress: string): string {
-  if (mintAddress.startsWith(PLACEHOLDER_MINT_PREFIX)) {
-    return 'https://dexscreener.com/solana';
+export function buildDexScreenerUrl(chainId: string, mintAddress: string): string {
+  if (!chainId || !mintAddress || isPlaceholderMint(mintAddress)) {
+    return 'https://dexscreener.com';
   }
-  return `https://dexscreener.com/solana/${mintAddress}`;
+  return `https://dexscreener.com/${chainId}/${mintAddress}`;
 }
 
 export function isPlaceholderMint(mintAddress: string): boolean {
@@ -243,6 +245,7 @@ export function buildSuggestionFromTopic(
     holderCount: number;
     hoursSinceLaunch: number;
     mintAddress?: string;
+    chainId?: string;
   },
 ): MemeSuggestion {
   const name = generateCoinName(topic);
@@ -256,6 +259,7 @@ export function buildSuggestionFromTopic(
   });
   const id = generateId();
   const mintAddress = metrics.mintAddress || generatePlaceholderMint(id);
+  const chainId = metrics.chainId || (metrics.mintAddress ? 'solana' : '');
 
   return {
     id,
@@ -269,6 +273,7 @@ export function buildSuggestionFromTopic(
     source: metrics.mintAddress ? 'dexscreener' : 'generated',
     trendingTopic: topic,
     mintAddress,
+    chainId,
     rationale: generateRationale({
       topic,
       twitterEngagement: metrics.twitterEngagement,
@@ -330,6 +335,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Doge',
     mintAddress: generatePlaceholderMint('mock-1'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[0],
   },
   {
@@ -344,6 +350,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Pepe',
     mintAddress: generatePlaceholderMint('mock-2'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[1],
   },
   {
@@ -358,6 +365,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Shib',
     mintAddress: generatePlaceholderMint('mock-3'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[2],
   },
   {
@@ -372,6 +380,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Cat',
     mintAddress: generatePlaceholderMint('mock-4'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[0],
   },
   {
@@ -386,6 +395,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Frog',
     mintAddress: generatePlaceholderMint('mock-5'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[1],
   },
   {
@@ -400,6 +410,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Whale',
     mintAddress: generatePlaceholderMint('mock-6'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[2],
   },
   {
@@ -414,6 +425,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Chad',
     mintAddress: generatePlaceholderMint('mock-7'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[1],
   },
   {
@@ -428,6 +440,7 @@ export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
     source: 'mock',
     trendingTopic: 'Neon',
     mintAddress: generatePlaceholderMint('mock-8'),
+    chainId: '',
     rationale: MOCK_RATIONALE_TEMPLATES[0],
   },
 ];

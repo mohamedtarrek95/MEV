@@ -120,7 +120,10 @@ function SuggestionCard({
 }) {
   const toast = useToast();
   const isPlaceholder = isPlaceholderMint(suggestion.mintAddress);
-  const dexUrl = buildDexScreenerUrl(suggestion.mintAddress);
+  const hasValidLink = !isPlaceholder && !!suggestion.chainId && !!suggestion.mintAddress;
+  const dexUrl = hasValidLink
+    ? buildDexScreenerUrl(suggestion.chainId, suggestion.mintAddress)
+    : 'https://dexscreener.com';
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -128,10 +131,10 @@ function SuggestionCard({
       onToggleExpand();
       return;
     }
-    window.open(dexUrl, '_blank', 'noopener,noreferrer');
-    if (isPlaceholder) {
+    if (!hasValidLink) {
       toast.push('info', 'Coin not found on DexScreener yet. Redirecting to search...');
     }
+    window.open(dexUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -162,9 +165,9 @@ function SuggestionCard({
                 href={dexUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={isPlaceholder ? 'This coin is a suggestion – launch it first to get a real address.' : 'View on DexScreener'}
+                title={!hasValidLink ? 'This coin is a suggestion – launch it first to get a real address.' : `View ${suggestion.name} on DexScreener`}
                 onClick={(e) => e.stopPropagation()}
-                className="text-zinc-600 hover:text-cyan-400 transition-colors"
+                className={!hasValidLink ? 'text-amber-500/50 cursor-not-allowed' : 'text-zinc-600 hover:text-cyan-400 transition-colors'}
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />

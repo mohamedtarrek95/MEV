@@ -60,7 +60,7 @@ async function fetchTwitterTrends(): Promise<string[]> {
 }
 
 async function fetchDexScreenerTrending(): Promise<{
-  tokens: { symbol: string; name: string; volumeChange: number; holders: number; address: string }[];
+  tokens: { symbol: string; name: string; volumeChange: number; holders: number; address: string; chainId: string }[];
   topKeywords: string[];
 }> {
   const headers: Record<string, string> = {};
@@ -72,19 +72,22 @@ async function fetchDexScreenerTrending(): Promise<{
       return { tokens: [], topKeywords: [] };
     }
     const data = await resp.json();
-    const solanaTokens = (data.pairs ?? []).filter(
-      (p: { chainId?: string }) => p.chainId === 'solana',
-    );
-    const tokens = solanaTokens.slice(0, 30).map((p: Record<string, unknown>) => {
-      const base = (p.baseToken ?? {}) as Record<string, string>;
-      return {
-        symbol: base.symbol ?? '',
-        name: base.name ?? '',
-        volumeChange: 100 + Math.random() * 200,
-        holders: Math.floor(100 + Math.random() * 500),
-        address: (p.baseToken as Record<string, string>)?.address ?? '',
-      };
-    });
+    const tokens = (data.pairs ?? [])
+      .filter((p: { chainId?: string; baseToken?: { address?: string } }) =>
+        p.chainId && p.baseToken?.address,
+      )
+      .slice(0, 30)
+      .map((p: Record<string, unknown>) => {
+        const base = (p.baseToken ?? {}) as Record<string, string>;
+        return {
+          symbol: base.symbol ?? '',
+          name: base.name ?? '',
+          volumeChange: 100 + Math.random() * 200,
+          holders: Math.floor(100 + Math.random() * 500),
+          address: base.address ?? '',
+          chainId: (p.chainId as string) ?? '',
+        };
+      });
     const topKeywords = tokens.slice(0, 10).map((tk: { name: string }) => tk.name.split(' ')[0]);
     return { tokens, topKeywords };
   } catch (e) {
@@ -202,6 +205,7 @@ export function useMemeResearch() {
             holderCount: dexToken?.holders ?? Math.floor(Math.random() * 500),
             hoursSinceLaunch: Math.floor(Math.random() * 72),
             mintAddress: dexToken?.address || undefined,
+            chainId: dexToken?.chainId || undefined,
           });
         });
       }
