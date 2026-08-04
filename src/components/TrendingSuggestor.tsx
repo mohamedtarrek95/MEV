@@ -7,89 +7,43 @@ import { useToast } from './Toast';
 import { Spinner } from './Spinner';
 import { LaunchModal, type LaunchModalData } from './LaunchModal';
 
-function ProgressBar({ pct, color }: { pct: number; color?: string }) {
-  const c =
-    pct >= 80 ? 'bg-emerald-500' :
-    pct >= 50 ? 'bg-cyan-500' :
-    pct >= 25 ? 'bg-amber-500' : 'bg-zinc-600';
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-zinc-800">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${color || c}`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
-      </div>
-      <span className="font-mono text-xs text-zinc-400">{Math.round(pct)}%</span>
-    </div>
-  );
-}
-
-function MigrationBadge({ count }: { count: number }) {
-  const cls =
-    count >= 5
-      ? 'border-emerald-500/50 text-emerald-400 bg-emerald-950/40'
-      : count >= 3
-        ? 'border-cyan-500/50 text-cyan-400 bg-cyan-950/40'
-        : 'border-amber-500/50 text-amber-400 bg-amber-950/40';
-  return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${cls}`}>
-      {count} prev
-    </span>
-  );
-}
-
-function QuickStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="text-center">
-      <div className="font-mono text-sm font-bold text-zinc-200">{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</div>
-    </div>
-  );
-}
-
 function CandidateCard({
   candidate,
   onLaunch,
-  expanded,
-  onToggle,
 }: {
   candidate: MigrationCandidate;
   onLaunch: (c: MigrationCandidate) => void;
-  expanded: boolean;
-  onToggle: () => void;
 }) {
   const toast = useToast();
   const axiomUrl = buildAxiomUrl(candidate.mintAddress);
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, a, input')) return;
-    if (expanded) {
-      onToggle();
-      return;
-    }
     window.open(axiomUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleCopyMint = () => {
+    void navigator.clipboard.writeText(candidate.mintAddress);
+    toast.push('success', 'Mint address copied');
   };
 
   const scoreColor =
     candidate.migrationScore >= 70
-      ? 'border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-emerald-500/10'
+      ? 'border-emerald-500/30'
       : candidate.migrationScore >= 45
-        ? 'border-cyan-500/30 hover:border-cyan-500/50 hover:shadow-cyan-500/10'
-        : 'border-amber-500/30 hover:border-amber-500/50 hover:shadow-amber-500/10';
+        ? 'border-cyan-500/30'
+        : 'border-amber-500/30';
 
   return (
     <div
-      className={`group cursor-pointer rounded-xl border bg-zinc-900/60 p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${
-        expanded ? `${scoreColor} shadow-lg` : `border-zinc-800 ${scoreColor}`
-      }`}
+      className={`group cursor-pointer rounded-xl border bg-zinc-900/60 p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${scoreColor} hover:border-zinc-700`}
       onClick={handleCardClick}
     >
       <div className="flex items-start gap-3">
         <img
           src={candidate.imageUrl}
           alt={candidate.name}
-          className="h-12 w-12 shrink-0 rounded-full border border-zinc-800 object-cover transition-transform duration-300 group-hover:scale-110"
+          className="h-12 w-12 shrink-0 rounded-full border border-zinc-800 object-cover"
           onError={(e) => {
             (e.target as HTMLImageElement).src =
               'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjMjcyNzNhIi8+PHRleHQgeD0iMjAiIHk9IjI0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNjY2IiBmb250LXNpemU9IjEyIj4/PC90ZXh0Pjwvc3ZnPg==';
@@ -98,16 +52,36 @@ function CandidateCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between">
             <div className="min-w-0">
-              <span className="font-mono text-sm font-bold text-zinc-100 truncate">{candidate.name}</span>
+              <span className="font-mono text-sm font-bold text-zinc-100 truncate">
+                {candidate.name}
+              </span>
               <span className="ml-2 font-mono text-xs text-cyan-400">{candidate.ticker}</span>
             </div>
-            <MigrationBadge count={candidate.previousMigrations} />
           </div>
-          <div className="mt-1.5">
-            <div className="mb-0.5 text-[10px] uppercase tracking-wider text-zinc-600">
-              Migration Progress
+
+          <div className="mt-2 flex items-center gap-3">
+            <div className="text-center">
+              <div className="font-mono text-lg font-bold text-emerald-400">
+                {candidate.previousMigrations}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-600">
+                Previous Migrated Tokens
+              </div>
             </div>
-            <ProgressBar pct={candidate.progressPct} />
+            <div className="h-8 w-px bg-zinc-800" />
+            <div className="text-center">
+              <div className="font-mono text-lg font-bold text-cyan-400">
+                {Math.round(candidate.progressPct)}%
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-600">Progress</div>
+            </div>
+            <div className="h-8 w-px bg-zinc-800" />
+            <div className="text-center">
+              <div className="font-mono text-lg font-bold text-zinc-300">
+                {candidate.migrationScore.toFixed(1)}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-600">Score</div>
+            </div>
           </div>
         </div>
       </div>
@@ -116,37 +90,31 @@ function CandidateCard({
         {candidate.rationale}
       </p>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
-        <QuickStat
-          label="Prev Migrations"
-          value={String(candidate.previousMigrations)}
-        />
-        <QuickStat
-          label="Progress"
-          value={`${Math.round(candidate.progressPct)}%`}
-        />
-        <QuickStat
-          label="Score"
-          value={candidate.migrationScore.toFixed(1)}
-        />
-      </div>
+      {candidate.similarNames.length > 0 && (
+        <div className="mt-2">
+          <span className="text-[10px] text-zinc-600">Matched migrated names: </span>
+          <span className="text-[11px] text-zinc-400">
+            {candidate.similarNames.slice(0, 5).join(', ')}
+            {candidate.similarNames.length > 5 && ` +${candidate.similarNames.length - 5} more`}
+          </span>
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-between">
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onToggle();
+            handleCopyMint();
           }}
           className="text-[11px] text-zinc-500 hover:text-cyan-400 transition-colors"
         >
-          {expanded ? '▲ Hide details' : '▼ Details'}
+          Copy Mint
         </button>
         <a
           href={axiomUrl}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          title="View on Axiom.Trade"
           className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-cyan-400 transition-colors"
         >
           <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -157,28 +125,6 @@ function CandidateCard({
           View on Axiom
         </a>
       </div>
-
-      {expanded && (
-        <div className="mt-3 border-t border-zinc-800 pt-3 space-y-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Migration Analysis
-          </div>
-          <p className="text-xs leading-relaxed text-zinc-400">{candidate.rationale}</p>
-          {candidate.similarNames.length > 0 && (
-            <div>
-              <span className="text-[10px] text-zinc-600">Previously migrated names: </span>
-              <span className="text-[11px] text-zinc-400">
-                {candidate.similarNames.slice(0, 5).join(', ')}
-                {candidate.similarNames.length > 5 && ` +${candidate.similarNames.length - 5} more`}
-              </span>
-            </div>
-          )}
-          <div className="text-[11px]">
-            <span className="text-zinc-600">Mint: </span>
-            <span className="font-mono text-zinc-500 break-all">{candidate.mintAddress}</span>
-          </div>
-        </div>
-      )}
 
       <button
         onClick={(e) => {
@@ -200,7 +146,6 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<Partial<LaunchModalData> | undefined>(undefined);
   const [modalTitle, setModalTitle] = useState('Launch Meme Coin');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleLaunchFromCandidate = (c: MigrationCandidate) => {
     setModalData({
@@ -234,7 +179,7 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
             Migration Predictor
           </h2>
           <p className="mt-1 text-xs text-zinc-600">
-            Final Stretch tokens with 2+ previous migrations. Ranked by migration count and progress.
+            Final Stretch tokens with 2+ previous migrations. Ranked by migration count.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -296,8 +241,6 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
               key={c.id}
               candidate={c}
               onLaunch={handleLaunchFromCandidate}
-              expanded={expandedId === c.id}
-              onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
             />
           ))}
         </div>

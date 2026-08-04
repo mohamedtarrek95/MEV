@@ -36,8 +36,16 @@ const AXIOM_BASE = 'https://axiom.trade/?token=';
 export function normalizeForFuzzy(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[\s_\-./\\|,!?~`'"@#$%^&*()+=\[\]{}<>:;]+/g, '')
-    .replace(/[^\w]/g, '')
+    .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
+    .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')
+    .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')
+    .replace(/[\u{1F900}-\u{1F9FF}]/gu, '')
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
+    .replace(/[\u{200D}]/gu, '')
+    .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '')
+    .replace(/[^\p{L}\p{N}]/gu, '')
     .replace(/(.)\1{2,}/g, '$1$1')
     .trim();
 }

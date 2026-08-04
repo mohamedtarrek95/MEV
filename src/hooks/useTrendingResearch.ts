@@ -8,10 +8,8 @@ import {
 } from '../utils/trendingEngine';
 
 const CACHE_TTL_MS = 2 * 60 * 1000;
-const FINAL_STRETCH_KEY = 'pump-final-stretch-cache';
-const MIGRATED_INDEX_KEY = 'pump-migrated-index';
-const FINAL_STRETCH_CACHE_TTL = 60 * 1000;
 const MIGRATED_CACHE_TTL = 10 * 60 * 1000;
+const MIGRATED_STORAGE_KEY = 'pump-migrated-cache';
 
 interface CacheEntry {
   candidates: MigrationCandidate[];
@@ -28,66 +26,24 @@ interface ResearchState {
 }
 
 async function fetchFinalStretchTokens(): Promise<FinalStretchToken[]> {
-  try {
-    const resp = await fetch(
-      'https://frontend-api-v3.pump.fun/coins/final-stretch?limit=100&offset=0&includeNsfw=false',
-    );
-    if (!resp.ok) {
-      console.warn(`[migration] Pump.fun final-stretch API ${resp.status}, trying king-of-the-hill`);
-      return fetchFinalStretchFallback();
-    }
-    const data = await resp.json();
-    const coins = Array.isArray(data) ? data : [];
-    if (coins.length === 0) {
-      console.warn('[migration] final-stretch returned empty, trying king-of-the-hill');
-      return fetchFinalStretchFallback();
-    }
-    return coins
-      .filter((c: Record<string, unknown>) => {
-        const complete = c.complete as boolean | undefined;
-        return complete === false || complete === undefined;
-      })
-      .slice(0, 100)
-      .map((c: Record<string, unknown>) => ({
-        name: (c.name as string) ?? '',
-        symbol: (c.symbol as string) ?? '',
-        mint: (c.mint as string) ?? '',
-        imageUri: (c.image_uri as string) ?? '',
-        usdMarketCap: (c.usd_market_cap as number) ?? 0,
-        progressPct: computeProgress(c.usd_market_cap as number ?? 0),
-        creator: (c.creator as string) ?? '',
-        createdAt: (c.created_timestamp as string) ?? '',
-      }));
-  } catch (e) {
-    console.warn('[migration] Final Stretch fetch failed:', e);
-    return fetchFinalStretchFallback();
-  }
-}
-
-async function fetchFinalStretchFallback(): Promise<FinalStretchToken[]> {
-  try {
-    const resp = await fetch(
-      'https://frontend-api-v3.pump.fun/coins/king-of-the-hill?limit=100&offset=0&includeNsfw=false',
-    );
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    const coins = Array.isArray(data) ? data : [];
-    return coins
-      .filter((c: Record<string, unknown>) => (c.complete as boolean) === false)
-      .slice(0, 100)
-      .map((c: Record<string, unknown>) => ({
-        name: (c.name as string) ?? '',
-        symbol: (c.symbol as string) ?? '',
-        mint: (c.mint as string) ?? '',
-        imageUri: (c.image_uri as string) ?? '',
-        usdMarketCap: (c.usd_market_cap as number) ?? 0,
-        progressPct: computeProgress(c.usd_market_cap as number ?? 0),
-        creator: (c.creator as string) ?? '',
-        createdAt: (c.created_timestamp as string) ?? '',
-      }));
-  } catch {
-    return [];
-  }
+  const resp = await fetch(
+    'https://frontend-api-v3.pump.fun/coins/king-of-the-hill?limit=100&offset=0&includeNsfw=false',
+  );
+  if (!resp.ok) throw new Error(`Pump.fun king-of-the-hill HTTP ${resp.status}`);
+  const data = await resp.json();
+  const coins = Array.isArray(data) ? data : [];
+  return coins
+    .filter((c: Record<string, unknown>) => (c.complete as boolean) === false)
+    .map((c: Record<string, unknown>) => ({
+      name: (c.name as string) ?? '',
+      symbol: (c.symbol as string) ?? '',
+      mint: (c.mint as string) ?? '',
+      imageUri: (c.image_uri as string) ?? '',
+      usdMarketCap: (c.usd_market_cap as number) ?? 0,
+      progressPct: computeProgress(c.usd_market_cap as number ?? 0),
+      creator: (c.creator as string) ?? '',
+      createdAt: (c.created_timestamp as string) ?? '',
+    }));
 }
 
 function computeProgress(marketCapUsd: number): number {
@@ -97,7 +53,7 @@ function computeProgress(marketCapUsd: number): number {
 
 async function fetchMigratedTokens(): Promise<MigratedToken[]> {
   try {
-    const raw = localStorage.getItem(MIGRATED_INDEX_KEY);
+    const raw = localStorage.getItem(MIGRATED_STORAGE_KEY);
     if (raw) {
       const cached: { tokens: MigratedToken[]; timestamp: number } = JSON.parse(raw);
       if (Date.now() - cached.timestamp < MIGRATED_CACHE_TTL) {
@@ -110,17 +66,14 @@ async function fetchMigratedTokens(): Promise<MigratedToken[]> {
 
   const allTokens: MigratedToken[] = [];
   const PAGE_SIZE = 100;
-  const MAX_PAGES = 5;
+  const MAX_PAGES = 10;
 
   for (let page = 0; page < MAX_PAGES; page++) {
     try {
       const resp = await fetch(
         `https://frontend-api-v3.pump.fun/coins?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&includeNsfw=false&sort=created_timestamp&order=DESC`,
       );
-      if (!resp.ok) {
-        console.warn(`[migration] Pump.fun migrated page ${page} API ${resp.status}`);
-        break;
-      }
+      if (!resp.ok) break;
       const data = await resp.json();
       const coins = Array.isArray(data) ? data : [];
       if (coins.length === 0) break;
@@ -138,16 +91,18 @@ async function fetchMigratedTokens(): Promise<MigratedToken[]> {
       }
 
       if (coins.length < PAGE_SIZE) break;
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 300));
     } catch {
       break;
     }
   }
 
   if (allTokens.length > 0) {
-    const cacheEntry = { tokens: allTokens, timestamp: Date.now() };
     try {
-      localStorage.setItem(MIGRATED_INDEX_KEY, JSON.stringify(cacheEntry));
+      localStorage.setItem(
+        MIGRATED_STORAGE_KEY,
+        JSON.stringify({ tokens: allTokens, timestamp: Date.now() }),
+      );
     } catch {
       /* ignore quota */
     }
@@ -178,36 +133,30 @@ function findMigratedMatches(
   const normalized = normalizeForFuzzy(finalStretchName);
   if (!normalized) return { count: 0, names: [] };
 
-  const matches: string[] = [];
+  const matchedNames = new Set<string>();
 
   const directMatch = migratedIndex.get(normalized);
   if (directMatch) {
-    for (const mt of directMatch) {
-      if (!matches.includes(mt.name)) matches.push(mt.name);
-    }
+    for (const mt of directMatch) matchedNames.add(mt.name);
   }
 
   for (const [key, tokens] of migratedIndex) {
     if (key === normalized) continue;
     if (key.includes(normalized) || normalized.includes(key)) {
-      for (const mt of tokens) {
-        if (!matches.includes(mt.name)) matches.push(mt.name);
-      }
+      for (const mt of tokens) matchedNames.add(mt.name);
     }
   }
 
   for (const [key, tokens] of migratedIndex) {
     if (key === normalized) continue;
     if (key.includes(normalized) || normalized.includes(key)) continue;
-    const isFuzzyMatch = tokens.some((mt) => fuzzyMatch(finalStretchName, mt.name));
-    if (isFuzzyMatch) {
-      for (const mt of tokens) {
-        if (!matches.includes(mt.name)) matches.push(mt.name);
-      }
+    const hasFuzzy = tokens.some((mt) => fuzzyMatch(finalStretchName, mt.name));
+    if (hasFuzzy) {
+      for (const mt of tokens) matchedNames.add(mt.name);
     }
   }
 
-  return { count: matches.length, names: matches };
+  return { count: matchedNames.size, names: [...matchedNames] };
 }
 
 function buildCandidates(
@@ -310,18 +259,22 @@ export function useTrendingResearch() {
         migratedResult.status === 'fulfilled' ? migratedResult.value : [];
 
       const errors: string[] = [];
-      if (finalStretchResult.status === 'rejected') errors.push('Final Stretch');
-      if (migratedResult.status === 'rejected') errors.push('Migrated tokens');
+      if (finalStretchResult.status === 'rejected') {
+        errors.push(`Final Stretch: ${String(finalStretchResult.reason)}`);
+      }
+      if (migratedResult.status === 'rejected') {
+        errors.push(`Migrated: ${String(migratedResult.reason)}`);
+      }
 
       if (finalStretchTokens.length === 0) {
-        errors.push('No Final Stretch tokens found');
+        errors.push('No Final Stretch tokens returned');
       }
       if (migratedTokens.length === 0) {
-        errors.push('No Migrated tokens found');
+        errors.push('No Migrated tokens returned');
       }
 
       const migratedIndex = buildMigratedIndex(migratedTokens);
-      let candidates = buildCandidates(finalStretchTokens, migratedIndex);
+      const candidates = buildCandidates(finalStretchTokens, migratedIndex);
       const ranked = rankCandidates(candidates, 20);
 
       let finalCandidates = ranked;
@@ -336,15 +289,15 @@ export function useTrendingResearch() {
       cacheRef.current = { candidates: finalCandidates, timestamp: now };
 
       const srcParts: string[] = [];
-      if (finalStretchTokens.length > 0) srcParts.push(`Final Stretch (${finalStretchTokens.length})`);
-      if (migratedTokens.length > 0) srcParts.push(`Migrated DB (${migratedTokens.length})`);
+      srcParts.push(`Final Stretch (${finalStretchTokens.length})`);
+      srcParts.push(`Migrated (${migratedTokens.length})`);
       if (finalCandidates.length > 0 && ranked.length === 0) srcParts.push('Fallback');
-      const srcSummary = srcParts.length > 0 ? srcParts.join(' | ') : 'No data';
+      const srcSummary = srcParts.join(' | ');
 
       setState({
         candidates: finalCandidates,
         isLoading: false,
-        error: errors.length > 0 ? `${errors.join('; ')}.` : null,
+        error: errors.length > 0 ? errors.join('; ') : null,
         lastUpdated: now,
         sourceSummary: srcSummary,
         nextRefreshIn: Math.ceil(CACHE_TTL_MS / 1000),
