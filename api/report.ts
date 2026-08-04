@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { loadReport as loadTrendsReport } from '../lib/trends/cache.js';
-import { loadReport as loadIntelReport } from '../lib/intel/cache.js';
+import { loadReport as loadIntelReport, hasRedis, healthCheck } from '../lib/intel/db.js';
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
   res.end(JSON.stringify(body));
 }
 
@@ -26,25 +26,41 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const url = new URL(req.url || '/', `https://${req.headers.host || 'localhost'}`);
   const action = url.searchParams.get('action');
 
-  if (action === 'trends') {
-    const report = await loadTrendsReport();
-    if (!report) {
-      sendJson(res, 200, { ok: true, report: null, source: 'trends' });
-      return;
-    }
-    sendJson(res, 200, { ok: true, report, source: 'trends' });
+  if (action === 'health') {
+    const dbOk = hasRedis() ? await healthCheck() : false;
+    sendJson(res, 200, { ok: true, redis: dbOk });
     return;
   }
 
   if (action === 'intel') {
-    const report = await loadIntelReport();
-    if (!report) {
-      sendJson(res, 200, { ok: true, report: null, source: 'intel', message: 'No report yet. Start the worker: npm run intel:worker' });
+    if (!hasRedis()) {
+      sendJson(res, 200, {
+        ok: true,
+        report: null,
+        source: 'intel',
+        message: 'REDIS_URL not configured. Deploy worker to populate data.',
+      });
       return;
     }
-    sendJson(res, 200, { ok: true, report, source: 'intel' });
+
+    try {
+      const report = await loadIntelReport();
+      if (!report) {
+        sendJson(res, 200, {
+          ok: true,
+          report: null,
+          source: 'intel',
+          message: 'No verified narratives found during the last 24 hours.',
+        });
+        return;
+      }
+      sendJson(res, 200, { ok: true, report, source: 'intel' });
+    } catch (err) {
+      console.error('[api] intel report fetch failed:', err);
+      sendJson(res, 500, { ok: false, error: 'Failed to load report' });
+    }
     return;
   }
 
-  sendJson(res, 400, { error: 'missing ?action=trends or ?action=intel' });
+  sendJson(res, 400, { error: 'missing ?action=intel or ?action=health' });
 }

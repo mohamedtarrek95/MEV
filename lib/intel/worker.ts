@@ -1,7 +1,26 @@
-import { loadReport, saveReport } from './cache.js';
 import { createAllProviders } from './providers/index.js';
 import { analyzeNarratives } from './engine.js';
+import { saveReport, disconnect, hasRedis } from './db.js';
 import type { IntelReport, RawPost } from './types.js';
+
+const REFRESH_MS = Number(process.env.INTEL_REFRESH_MS || 5 * 60 * 1000);
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 3000;
+
+async function fetchWithRetry(provider: { name: string; sourceId: string; fetch(): Promise<RawPost[]> }, attempt = 0): Promise<RawPost[]> {
+  try {
+    const posts = await provider.fetch();
+    return posts;
+  } catch (err) {
+    if (attempt < MAX_RETRIES) {
+      console.warn(`[intel] ${provider.name} failed (attempt ${attempt + 1}), retrying in ${RETRY_DELAY_MS}ms...`);
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      return fetchWithRetry(provider, attempt + 1);
+    }
+    console.error(`[intel] ${provider.name} failed after ${MAX_RETRIES + 1} attempts:`, err instanceof Error ? err.message : err);
+    return [];
+  }
+}
 
 export async function runScan(): Promise<IntelReport> {
   const providers = createAllProviders();
@@ -9,14 +28,9 @@ export async function runScan(): Promise<IntelReport> {
 
   const results = await Promise.allSettled(
     providers.map(async (p) => {
-      try {
-        const posts = await p.fetch();
-        console.log(`[intel] ${p.name}: ${posts.length} posts`);
-        return { source: p.sourceId, posts };
-      } catch (err) {
-        console.error(`[intel] ${p.name} failed:`, err instanceof Error ? err.message : err);
-        return { source: p.sourceId, posts: [] as RawPost[] };
-      }
+      const posts = await fetchWithRetry(p);
+      console.log(`[intel] ${p.name}: ${posts.length} posts`);
+      return { source: p.sourceId, posts };
     }),
   );
 
@@ -29,9 +43,10 @@ export async function runScan(): Promise<IntelReport> {
     }
   }
 
-  console.log(`[intel] total posts collected: ${allPosts.length}`);
+  console.log(`[intel] total posts collected: ${allPosts.length} from ${sourcesScanned.length} sources`);
 
   const narratives = analyzeNarratives(allPosts);
+  console.log(`[intel] analysis complete: ${narratives.length} narratives`);
 
   const report: IntelReport = {
     generatedAt: Date.now(),
@@ -41,20 +56,38 @@ export async function runScan(): Promise<IntelReport> {
     windowHours: 24,
   };
 
-  await saveReport(report);
-  console.log(`[intel] scan complete: ${narratives.length} narratives from ${sourcesScanned.length} sources`);
+  if (hasRedis()) {
+    await saveReport(report);
+  } else {
+    console.log('[intel] no REDIS_URL set, skipping database save (local mode)');
+  }
+
   return report;
 }
 
+function shutdown(signal: string) {
+  console.log(`[intel] received ${signal}, shutting down...`);
+  void disconnect().then(() => process.exit(0));
+}
+
 export async function startWorker(): Promise<void> {
-  const intervalMs = Number(process.env.INTEL_REFRESH_MS || 5 * 60 * 1000);
-  await runScan();
+  console.log(`[intel] worker starting, refresh every ${Math.round(REFRESH_MS / 60000)} min`);
+  console.log(`[intel] redis: ${hasRedis() ? 'connected' : 'not configured (local mode)'}`);
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  await runScan().catch((err) => {
+    console.error('[intel] initial scan failed:', err);
+  });
+
   setInterval(() => {
     void runScan().catch((err) => {
-      console.error('[intel] worker scan failed:', err);
+      console.error('[intel] scan failed:', err);
     });
-  }, intervalMs);
-  console.log(`[intel] worker running, refresh every ${Math.round(intervalMs / 60000)} min`);
+  }, REFRESH_MS);
+
+  console.log('[intel] worker running');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
