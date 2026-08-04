@@ -1,84 +1,83 @@
 import { useRef, useState } from 'react';
 import type { BundleApi } from '../hooks/useBundle';
-import { useTrendDiscovery } from '../hooks/useTrendDiscovery';
-import type { Tweet } from '../utils/trends/types';
-import type { IFeedProvider } from '../utils/trends/feedProvider';
-import { MockFeedProvider } from '../utils/trends/mockFeed';
+import { useIntelDiscovery } from '../hooks/useIntelDiscovery';
+import { sourceLabel } from '../utils/intel/sources';
+import { formatAge, formatEng, hoursAgo } from '../utils/intel/time';
+import type { IntelSuggestion, SourceId } from '../utils/intel/types';
 import { useToast } from './Toast';
 import { Spinner } from './Spinner';
 import { LaunchModal, type LaunchModalData } from './LaunchModal';
 
-function formatAge(ageMs: number): string {
-  const mins = Math.floor(ageMs / 60000);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ${mins % 60}m`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-}
+const DETECTED_SOURCES: SourceId[] = [
+  'reddit', 'telegram', 'bluesky', 'mastodon', 'nitter',
+  'pumpfun', 'axiom', 'dexscreener', 'dextools', 'geckoterminal',
+  'gmgn', 'bullx', 'photon', 'birdeye', 'jupiter',
+];
 
-function formatEngagement(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(n);
-}
-
-function formatTime(ms: number): string {
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function ScoreBar({ score }: { score: number }) {
+function ScoreBar({ score, label }: { score: number; label: string }) {
   const pct = Math.min(score, 100);
   const color = score >= 70 ? 'bg-emerald-500' : score >= 45 ? 'bg-cyan-500' : 'bg-amber-500';
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-800">
+      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-zinc-800">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="font-mono text-xs font-bold text-zinc-200">{score.toFixed(1)}</span>
+      {label && <span className="text-[10px] text-zinc-600">{label}</span>}
     </div>
   );
 }
 
-interface SuggestionCardProps {
-  mintAddress: string;
-  tokenName: string;
-  tokenSymbol: string;
-  imageUrl: string;
-  trendScore: number;
-  mentions24h: number;
-  uniqueAccounts: number;
-  totalEngagement: number;
-  tokenAgeMs: number;
-  firstDetectedAt: number;
-  matchedTopic: string;
-  dexscreenerUrl: string;
-  onLaunch: () => void;
+function ConfidenceBadge({ pct }: { pct: number }) {
+  const color = pct >= 70 ? 'border-emerald-500/50 text-emerald-400 bg-emerald-950/40'
+    : pct >= 40 ? 'border-cyan-500/50 text-cyan-400 bg-cyan-950/40'
+    : 'border-zinc-600/50 text-zinc-400 bg-zinc-900/40';
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${color}`}>
+      {pct}% conf
+    </span>
+  );
 }
 
-function SuggestionCard(props: SuggestionCardProps) {
+function PlatformRow({ sourceId, mentions, trendingRank }: { sourceId: SourceId; mentions: number; trendingRank?: number }) {
+  return (
+    <div className="flex items-center justify-between gap-1 rounded bg-zinc-950/60 px-2 py-1">
+      <span className="text-[11px] text-zinc-400">✓ {sourceLabel(sourceId)}</span>
+      <span className="text-[10px] text-zinc-500">
+        {mentions > 0 ? `${mentions} mentions` : '—'}
+        {trendingRank !== undefined && <span className="ml-1 text-cyan-400">#{trendingRank}</span>}
+      </span>
+    </div>
+  );
+}
+
+function CandidateCard({ suggestion }: { suggestion: IntelSuggestion }) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    void navigator.clipboard.writeText(props.mintAddress);
+    void navigator.clipboard.writeText(suggestion.mintAddress);
     toast.push('success', 'Contract address copied');
     setCopied(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setCopied(false), 1500);
   };
 
+  const detectedSources = DETECTED_SOURCES.filter((sid) => {
+    const ps = suggestion.platformSignals.find((s) => s.sourceId === sid);
+    return ps && ps.mentions > 0;
+  });
+  const undetectedSources = DETECTED_SOURCES.filter((sid) => !detectedSources.includes(sid));
+
   return (
-    <div
-      onClick={() => window.open(props.dexscreenerUrl, '_blank', 'noopener,noreferrer')}
-      className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-300 hover:scale-[1.02] hover:border-cyan-500/40 hover:shadow-lg"
-    >
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-300 hover:border-zinc-700">
       <div className="flex items-start gap-3">
         <img
-          src={props.imageUrl}
-          alt={props.tokenName}
+          src={suggestion.imageUrl}
+          alt={suggestion.tokenName}
           className="h-11 w-11 shrink-0 rounded-full border border-zinc-800 object-cover"
           onError={(e) => {
             (e.target as HTMLImageElement).src =
@@ -88,17 +87,20 @@ function SuggestionCard(props: SuggestionCardProps) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <span className="font-mono text-sm font-bold text-zinc-100 truncate">{props.tokenName}</span>
-              <span className="ml-2 font-mono text-xs text-cyan-400">{props.tokenSymbol}</span>
+              <span className="font-mono text-sm font-bold text-zinc-100 truncate">{suggestion.tokenName}</span>
+              <span className="ml-2 font-mono text-xs text-cyan-400">{suggestion.tokenSymbol}</span>
             </div>
-            <span className="shrink-0 rounded bg-fuchsia-950/60 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
-              Trend {props.trendScore.toFixed(1)}
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <ConfidenceBadge pct={suggestion.confidencePct} />
+              <span className="rounded bg-fuchsia-950/60 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
+                {suggestion.platformsCount} sources
+              </span>
+            </div>
           </div>
 
           <div className="mt-1.5 flex items-center gap-1.5">
             <span className="min-w-0 flex-1 break-all font-mono text-[10px] text-zinc-500">
-              {props.mintAddress}
+              {suggestion.mintAddress}
             </span>
             <button
               onClick={handleCopy}
@@ -111,78 +113,122 @@ function SuggestionCard(props: SuggestionCardProps) {
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
-        </div>
-      </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
-          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Mentions (24h)</div>
-          <div className="font-mono text-sm font-bold text-zinc-100">{props.mentions24h}</div>
-        </div>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
-          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Unique Accounts</div>
-          <div className="font-mono text-sm font-bold text-zinc-100">{props.uniqueAccounts}</div>
-        </div>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
-          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Total Engagement</div>
-          <div className="font-mono text-sm font-bold text-zinc-100">
-            {formatEngagement(props.totalEngagement)}
+          <div className="mt-2">
+            <div className="text-[10px] uppercase tracking-wider text-zinc-600">Global Trend Score</div>
+            <ScoreBar score={suggestion.globalTrendScore} label="" />
           </div>
         </div>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+        <div className="text-center">
+          <div className="font-mono text-sm font-bold text-zinc-100">{suggestion.totalMentions}</div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Mentions</div>
+        </div>
+        <div className="text-center">
+          <div className="font-mono text-sm font-bold text-zinc-100">{formatAge(suggestion.tokenAgeMs)}</div>
           <div className="text-[10px] uppercase tracking-wider text-zinc-600">Token Age</div>
-          <div className="font-mono text-sm font-bold text-zinc-100">{formatAge(props.tokenAgeMs)}</div>
+        </div>
+        <div className="text-center">
+          <div className="font-mono text-sm font-bold text-zinc-100">
+            {new Date(suggestion.firstDetectedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">First Detected</div>
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-600">
-        <span>First detected: {formatTime(props.firstDetectedAt)}</span>
-        <span>Matched: {props.matchedTopic}</span>
+      <div className="mt-3">
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+          Detected On ({detectedSources.length})
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          {detectedSources.map((sid) => {
+            const ps = suggestion.platformSignals.find((s) => s.sourceId === sid);
+            return (
+              <PlatformRow
+                key={sid}
+                sourceId={sid}
+                mentions={ps?.mentions ?? 0}
+                trendingRank={ps?.trendingRank}
+              />
+            );
+          })}
+        </div>
       </div>
 
-      <div className="mt-2">
-        <div className="text-[10px] uppercase tracking-wider text-zinc-600">Trend Score</div>
-        <ScoreBar score={props.trendScore} />
-      </div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="mt-2 w-full text-center text-[11px] text-zinc-500 hover:text-cyan-400 transition-colors"
+      >
+        {expanded ? '▲ Hide Details' : `▼ Details + Evidence (${suggestion.evidence.length} bullets)`}
+      </button>
+
+      {expanded && (
+        <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            Why This Was Selected
+          </div>
+          <ul className="space-y-1">
+            {suggestion.evidence.map((e, i) => (
+              <li key={`${e.sourceId}-${i}`} className="text-[11px] text-zinc-400">
+                • {e.text}
+              </li>
+            ))}
+          </ul>
+
+          {undetectedSources.length > 0 && (
+            <div className="mt-2">
+              <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-600">Not Detected On</div>
+              <div className="flex flex-wrap gap-1">
+                {undetectedSources.map((sid) => (
+                  <span key={sid} className="rounded bg-zinc-900/60 px-1.5 py-0.5 text-[10px] text-zinc-600">
+                    {sourceLabel(sid)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="text-[10px] text-zinc-600">Chain: {suggestion.chain}</div>
+        </div>
+      )}
 
       <div className="mt-3 flex gap-2">
         <a
-          href={props.dexscreenerUrl}
+          href={suggestion.dexscreenerUrl}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="flex-1 rounded-md border border-zinc-700 px-3 py-2 text-center text-xs font-semibold text-zinc-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-300"
+          className="flex-1 rounded-md border border-zinc-700 px-3 py-2 text-center text-[11px] font-semibold text-zinc-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-300"
         >
           Open on DexScreener
         </a>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onLaunch();
-          }}
-          className="flex-1 rounded-md bg-fuchsia-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-fuchsia-500"
+        <a
+          href={suggestion.axiomUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 rounded-md border border-zinc-700 px-3 py-2 text-center text-[11px] font-semibold text-zinc-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-300"
         >
-          Launch This Coin
-        </button>
+          Open on Axiom
+        </a>
       </div>
     </div>
   );
 }
 
-export function TrendingSuggestor({ api, feedProvider }: { api: BundleApi; feedProvider?: IFeedProvider }) {
-  const { suggestions, topics, isLoading, error, lastUpdated, tweetsProcessed, nextRefreshIn, refresh } =
-    useTrendDiscovery(feedProvider);
+export function TrendingSuggestor({ api }: { api: BundleApi }) {
+  const { suggestions, isLoading, error, lastUpdated, observationsProcessed, nextRefreshIn, feedSource, refresh } =
+    useIntelDiscovery();
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<Partial<LaunchModalData> | undefined>(undefined);
   const [modalTitle, setModalTitle] = useState('Launch Meme Coin');
-  const [view, setView] = useState<'suggestions' | 'topics'>('suggestions');
 
-  const handleLaunch = (s: (typeof suggestions)[number]) => {
+  const handleLaunch = (s: IntelSuggestion) => {
     setModalData({
       name: s.tokenName,
       ticker: s.tokenSymbol,
-      description: `Trending topic "${s.matchedTopic}" — ${s.mentions24h} mentions, ${s.uniqueAccounts} accounts in 24h.`,
+      description: s.topReason,
       imageUrl: s.imageUrl,
       buyAmount: 0.1,
     });
@@ -207,10 +253,10 @@ export function TrendingSuggestor({ api, feedProvider }: { api: BundleApi; feedP
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-mono text-sm font-semibold uppercase tracking-wider text-zinc-400">
-            X Trend Discovery
+            Multi-Source Meme Intelligence
           </h2>
           <p className="mt-1 text-xs text-zinc-600">
-            Narrative engine over the last 24h, mapped to Pump.fun Final Stretch.
+            Cross-platform signals from 15 sources. Final Stretch only, 24h window, refreshed every 4 min.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -230,101 +276,42 @@ export function TrendingSuggestor({ api, feedProvider }: { api: BundleApi; feedP
         </div>
       </div>
 
-      <div className="mb-4 flex gap-2">
-        <button
-          onClick={() => setView('suggestions')}
-          className={`rounded-md px-3 py-1.5 font-mono text-xs font-semibold transition-colors ${
-            view === 'suggestions' ? 'bg-fuchsia-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          Suggestions
-        </button>
-        <button
-          onClick={() => setView('topics')}
-          className={`rounded-md px-3 py-1.5 font-mono text-xs font-semibold transition-colors ${
-            view === 'topics' ? 'bg-fuchsia-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          Trend Topics
-        </button>
-      </div>
-
       {error && (
         <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
           ⚠ {error}
         </div>
       )}
 
-      {sourceBanner(timeSince, tweetsProcessed, topics.length, suggestions.length)}
+      {feedSource && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-2 text-[11px] text-zinc-500">
+          <span>{feedSource}</span>
+          {timeSince > 0 && <span>(updated {timeSince}s ago)</span>}
+          <span>{suggestions.length} suggestions</span>
+        </div>
+      )}
 
       {isLoading && suggestions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <Spinner className="h-8 w-8 text-cyan-400" />
-          <p className="mt-4 font-mono text-sm text-zinc-500">Scanning X for trends...</p>
+          <p className="mt-4 font-mono text-sm text-zinc-500">Scanning 15 sources across the web...</p>
         </div>
-      ) : view === 'suggestions' ? (
-        suggestions.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <p className="text-sm text-zinc-600">
-              No trending topics matched a Final Stretch token yet.
-            </p>
-            <button
-              onClick={refresh}
-              className="mt-4 inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-950/30 px-4 py-2 text-sm font-semibold text-cyan-300 transition-colors hover:bg-cyan-900/40"
-            >
-              Retry
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {suggestions.map((s) => (
-              <SuggestionCard
-                key={s.id}
-                mintAddress={s.mintAddress}
-                tokenName={s.tokenName}
-                tokenSymbol={s.tokenSymbol}
-                imageUrl={s.imageUrl}
-                trendScore={s.trendScore}
-                mentions24h={s.mentions24h}
-                uniqueAccounts={s.uniqueAccounts}
-                totalEngagement={s.totalEngagement}
-                tokenAgeMs={s.tokenAgeMs}
-                firstDetectedAt={s.firstDetectedAt}
-                matchedTopic={s.matchedTopic}
-                dexscreenerUrl={s.dexscreenerUrl}
-                onLaunch={() => handleLaunch(s)}
-              />
-            ))}
-          </div>
-        )
-      ) : topics.length === 0 ? (
-        <div className="py-16 text-center text-sm text-zinc-600">No topics detected yet.</div>
+      ) : suggestions.length === 0 ? (
+        <div className="flex flex-col items-center py-16 text-center">
+          <p className="text-sm text-zinc-600">
+            No Final Stretch tokens match any cross-platform trends yet.
+          </p>
+          <button
+            onClick={refresh}
+            className="mt-4 inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-950/30 px-4 py-2 text-sm font-semibold text-cyan-300 transition-colors hover:bg-cyan-900/40"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-zinc-800">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-zinc-950/60 font-mono text-[10px] uppercase tracking-wider text-zinc-600">
-              <tr>
-                <th className="px-3 py-2">Topic</th>
-                <th className="px-3 py-2">Mentions</th>
-                <th className="px-3 py-2">Accounts</th>
-                <th className="px-3 py-2">Engagement</th>
-                <th className="px-3 py-2">Score</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {topics.map((t, i) => (
-                <tr key={`${t.canonical}-${i}`} className="bg-zinc-900/40">
-                  <td className="px-3 py-2 font-mono font-semibold text-cyan-300">{t.display}</td>
-                  <td className="px-3 py-2 text-zinc-300">{t.mentionCount}</td>
-                  <td className="px-3 py-2 text-zinc-300">{t.uniqueAccounts}</td>
-                  <td className="px-3 py-2 text-zinc-300">{formatEngagement(t.totalEngagement)}</td>
-                  <td className="px-3 py-2">
-                    <ScoreBar score={t.trendScore} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {suggestions.map((s) => (
+            <CandidateCard key={s.id} suggestion={s} />
+          ))}
         </div>
       )}
 
@@ -338,22 +325,5 @@ export function TrendingSuggestor({ api, feedProvider }: { api: BundleApi; feedP
         onCancel={() => setModalOpen(false)}
       />
     </section>
-  );
-}
-
-function sourceBanner(
-  timeSince: number,
-  tweetsProcessed: number,
-  topicCount: number,
-  suggestionCount: number,
-) {
-  return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-2 text-[11px] text-zinc-500">
-      <span>Source: Mock feed (Playwright X + official API swappable)</span>
-      <span>{tweetsProcessed} tweets</span>
-      <span>{topicCount} topics</span>
-      <span>{suggestionCount} suggestions</span>
-      {timeSince > 0 && <span>(updated {timeSince}s ago)</span>}
-    </div>
   );
 }
