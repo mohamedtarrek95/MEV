@@ -8,7 +8,9 @@
     "build": "tsc && tsc -p api/tsconfig.json && vite build",
     "preview": "vite preview",
     "trends:worker": "tsx api/trends/worker.ts",
-    "trends:worker:playwright": "cross-env TRENDS_PROVIDER=playwright tsx api/trends/worker.ts"
+    "trends:worker:playwright": "cross-env TRENDS_PROVIDER=playwright tsx api/trends/worker.ts",
+    "intel:worker": "tsx api/intel/worker.ts",
+    "intel:api": "tsx api/intel/api.ts"
   },
   "dependencies": {
     "@jup-ag/api": "^6.0.3",

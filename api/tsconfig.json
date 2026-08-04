@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["pump/upload.ts", "trends/**/*.ts"]
+  "include": ["pump/upload.ts", "trends/**/*.ts", "intel/**/*.ts"]
 }

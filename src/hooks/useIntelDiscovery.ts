@@ -1,314 +1,154 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Post, MemeIdea } from '../utils/intel/types';
-import { MockMultiSourceProvider, createAllProviders } from '../utils/intel/providers/mockMulti';
-import { buildMemeIdeas } from '../utils/intel/engine';
-import { REFRESH_MS, WINDOW_MS } from '../utils/intel/sources';
+import type { MemeNarrative, IntelReport, TokenSuggestion } from '../utils/intel/types';
+import { REFRESH_MS } from '../utils/intel/sources';
 
-// ── cache schema versioning ─────────────────────────────────────────
-export const CACHE_SCHEMA_VERSION = 2;
-const CACHE_KEY = 'meme-intel-cache';
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const INTEL_API_URL = import.meta.env.VITE_INTEL_API_URL || 'http://localhost:3939/api/intel';
+const CACHE_KEY = 'meme-intel-real-cache';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 interface CacheEnvelope {
   version: number;
   timestamp: number;
-  data: MemeIdea[];
+  report: IntelReport;
 }
 
-// ── per-field validation ────────────────────────────────────────────
-interface ValidationError {
-  field: string;
-  reason: string;
-}
-
-function validateToken(token: unknown): token is MemeIdea['token'] {
-  if (typeof token !== 'object' || token === null) return false;
-  const t = token as Record<string, unknown>;
-  const checks: [string, boolean][] = [
-    ['token.name', typeof t.name === 'string' && t.name.length > 0],
-    ['token.symbol', typeof t.symbol === 'string' && t.symbol.length > 0],
-    ['token.description', typeof t.description === 'string'],
-    ['token.theme', typeof t.theme === 'string'],
-    ['token.lore', typeof t.lore === 'string'],
-    ['token.mascot', typeof t.mascot === 'string'],
-    ['token.colorPalette', Array.isArray(t.colorPalette)],
-    ['token.logoPrompt', typeof t.logoPrompt === 'string'],
-    ['token.bannerPrompt', typeof t.bannerPrompt === 'string'],
-    ['token.websiteStyle', typeof t.websiteStyle === 'string'],
-    ['token.socialBio', typeof t.socialBio === 'string'],
-    ['token.launchTags', Array.isArray(t.launchTags)],
-  ];
-  return checks.every(([, ok]) => ok);
-}
-
-function validateIdea(raw: unknown, index: number): { valid: true; idea: MemeIdea } | { valid: false; errors: ValidationError[] } {
-  if (typeof raw !== 'object' || raw === null) {
-    return { valid: false, errors: [{ field: 'root', reason: `item at index ${index} is not an object (type: ${typeof raw})` }] };
-  }
-  const obj = raw as Record<string, unknown>;
-  const errors: ValidationError[] = [];
-
-  if (typeof obj.id !== 'string') errors.push({ field: 'id', reason: `expected string, got ${typeof obj.id}` });
-  if (typeof obj.narrative !== 'string') errors.push({ field: 'narrative', reason: `expected string, got ${typeof obj.narrative}` });
-  if (typeof obj.trendScore !== 'number') errors.push({ field: 'trendScore', reason: `expected number, got ${typeof obj.trendScore}` });
-  if (typeof obj.mentionCount !== 'number') errors.push({ field: 'mentionCount', reason: `expected number, got ${typeof obj.mentionCount}` });
-  if (typeof obj.growthPct !== 'number') errors.push({ field: 'growthPct', reason: `expected number, got ${typeof obj.growthPct}` });
-  if (typeof obj.uniqueAuthors !== 'number') errors.push({ field: 'uniqueAuthors', reason: `expected number, got ${typeof obj.uniqueAuthors}` });
-  if (!Array.isArray(obj.platformsFound)) errors.push({ field: 'platformsFound', reason: `expected array, got ${typeof obj.platformsFound}` });
-  if (typeof obj.platformCount !== 'number') errors.push({ field: 'platformCount', reason: `expected number, got ${typeof obj.platformCount}` });
-  if (typeof obj.firstDetected !== 'number') errors.push({ field: 'firstDetected', reason: `expected number, got ${typeof obj.firstDetected}` });
-  if (typeof obj.lastSeen !== 'number') errors.push({ field: 'lastSeen', reason: `expected number, got ${typeof obj.lastSeen}` });
-  if (typeof obj.confidencePct !== 'number') errors.push({ field: 'confidencePct', reason: `expected number, got ${typeof obj.confidencePct}` });
-  if (typeof obj.reason !== 'string') errors.push({ field: 'reason', reason: `expected string, got ${typeof obj.reason}` });
-  if (!Array.isArray(obj.evidence)) errors.push({ field: 'evidence', reason: `expected array, got ${typeof obj.evidence}` });
-  if (typeof obj.category !== 'string') errors.push({ field: 'category', reason: `expected string, got ${typeof obj.category}` });
-
-  if (!validateToken(obj.token)) {
-    errors.push({ field: 'token', reason: `token object is missing required fields or is ${typeof obj.token}` });
-  }
-
-  if (errors.length > 0) {
-    console.warn(`[intel] item #${index} (${obj.id ?? 'unknown'}) invalid:`, errors);
-    return { valid: false, errors };
-  }
-
-  return { valid: true, idea: raw as MemeIdea };
-}
-
-// ── cache read/write ────────────────────────────────────────────────
-interface CacheReadResult {
-  ideas: MemeIdea[];
-  stats: {
-    totalRaw: number;
-    valid: number;
-    discarded: number;
-    reasons: string[];
-  };
-}
-
-function readCache(): CacheReadResult {
-  const empty: CacheReadResult = { ideas: [], stats: { totalRaw: 0, valid: 0, discarded: 0, reasons: [] } };
-
+function readCache(): IntelReport | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) {
-      console.log('[intel] cache: empty');
-      return empty;
-    }
-
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) {
-      console.warn('[intel] cache: root is not an object, discarding');
-      localStorage.removeItem(CACHE_KEY);
-      return empty;
-    }
-
-    const envelope = parsed as Record<string, unknown>;
-
-    // version check
-    if (typeof envelope.version !== 'number') {
-      console.warn('[intel] cache: no version field, discarding entire cache');
-      localStorage.removeItem(CACHE_KEY);
-      return empty;
-    }
-    if (envelope.version !== CACHE_SCHEMA_VERSION) {
-      console.warn(`[intel] cache: version mismatch (cache=${envelope.version}, expected=${CACHE_SCHEMA_VERSION}), discarding`);
-      localStorage.removeItem(CACHE_KEY);
-      return empty;
-    }
-
-    // TTL check
-    if (typeof envelope.timestamp !== 'number') {
-      console.warn('[intel] cache: no timestamp, discarding');
-      localStorage.removeItem(CACHE_KEY);
-      return empty;
-    }
-    const ageMs = Date.now() - envelope.timestamp;
-    const ageMin = Math.round(ageMs / 60000);
-    console.log(`[intel] cache: version=${envelope.version}, age=${ageMin}m`);
-
-    if (ageMs > CACHE_TTL_MS) {
-      console.warn(`[intel] cache: expired (age=${ageMin}m > ${CACHE_TTL_MS / 60000}m), discarding`);
-      localStorage.removeItem(CACHE_KEY);
-      return empty;
-    }
-
-    // data check
-    if (!Array.isArray(envelope.data)) {
-      console.warn('[intel] cache: data is not an array, discarding');
-      localStorage.removeItem(CACHE_KEY);
-      return empty;
-    }
-
-    const items = envelope.data as unknown[];
-    const valid: MemeIdea[] = [];
-    const reasons: string[] = [];
-
-    for (let i = 0; i < items.length; i++) {
-      const result = validateIdea(items[i], i);
-      if (result.valid) {
-        valid.push(result.idea);
-      } else {
-        const r = result.errors.map((e) => `${e.field}: ${e.reason}`).join('; ');
-        reasons.push(`item #${i}: ${r}`);
-      }
-    }
-
-    const stats = {
-      totalRaw: items.length,
-      valid: valid.length,
-      discarded: items.length - valid.length,
-      reasons,
-    };
-
-    if (stats.discarded > 0) {
-      console.warn(`[intel] cache: ${stats.discarded}/${stats.totalRaw} items discarded`, reasons);
-    } else {
-      console.log(`[intel] cache: ${stats.valid} valid items loaded`);
-    }
-
-    return { ideas: valid, stats };
-  } catch (err) {
-    console.error('[intel] cache: parse/read failed, discarding', err);
+    if (!raw) return null;
+    const envelope: CacheEnvelope = JSON.parse(raw);
+    if (envelope.version !== 1) { localStorage.removeItem(CACHE_KEY); return null; }
+    if (Date.now() - envelope.timestamp > CACHE_TTL_MS) { localStorage.removeItem(CACHE_KEY); return null; }
+    return envelope.report;
+  } catch {
     localStorage.removeItem(CACHE_KEY);
-    return empty;
+    return null;
   }
 }
 
-function writeCache(ideas: MemeIdea[]) {
+function writeCache(report: IntelReport) {
   try {
-    const envelope: CacheEnvelope = {
-      version: CACHE_SCHEMA_VERSION,
-      timestamp: Date.now(),
-      data: ideas,
-    };
+    const envelope: CacheEnvelope = { version: 1, timestamp: Date.now(), report };
     localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
-    console.log(`[intel] cache: wrote ${ideas.length} ideas (version=${CACHE_SCHEMA_VERSION})`);
-  } catch { /* quota exceeded — ignore */ }
+  } catch { /* ignore */ }
 }
 
-// ── public debug info ───────────────────────────────────────────────
-export interface CacheDebugInfo {
-  cacheKey: string;
-  schemaVersion: number;
-  expectedVersion: number;
-  versionMatch: boolean;
-  rawJson: string | null;
-  parsedEnvelope: CacheEnvelope | null;
-  ageMs: number | null;
-  ageMinutes: number | null;
-  ttlMinutes: number;
-  expired: boolean;
-  totalItems: number;
-  validItems: number;
-  invalidItems: number;
-  validationErrors: string[];
-}
+// ── token generation from narrative ─────────────────────────────────
+const NAME_PREFIXES = ['Mega','Ultra','Super','Hyper','Turbo','Epic','Legendary','Cosmic','Neon','Pixel','Cyber','Quantum','Galaxy','Stellar','Alpha','Shadow','Void','Laser','Happy','Wild'];
 
-export function getCacheDebugInfo(): CacheDebugInfo {
-  const info: CacheDebugInfo = {
-    cacheKey: CACHE_KEY,
-    schemaVersion: -1,
-    expectedVersion: CACHE_SCHEMA_VERSION,
-    versionMatch: false,
-    rawJson: null,
-    parsedEnvelope: null,
-    ageMs: null,
-    ageMinutes: null,
-    ttlMinutes: CACHE_TTL_MS / 60000,
-    expired: false,
-    totalItems: 0,
-    validItems: 0,
-    invalidItems: 0,
-    validationErrors: [],
+function hashCode(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return h; }
+function capitalize(s: string): string { return s.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '); }
+
+export function generateToken(narrative: MemeNarrative): TokenSuggestion {
+  const n = narrative.narrative;
+  const words = n.split(/\s+/);
+  let name: string;
+  if (words.length === 1) {
+    const prefix = NAME_PREFIXES[Math.abs(hashCode(n)) % NAME_PREFIXES.length];
+    name = `${prefix} ${capitalize(n)}`;
+  } else {
+    name = words.map(capitalize).join(' ');
+  }
+  const symbolWords = name.split(/\s+/);
+  const symbol = symbolWords.length === 1
+    ? (symbolWords[0].length <= 6 ? symbolWords[0].toUpperCase() : symbolWords[0].slice(0, 6).toUpperCase())
+    : symbolWords.map((w) => w[0]).join('').toUpperCase().slice(0, 6);
+
+  const category = narrative.category;
+  const descMap: Record<string, string> = {
+    'Animals': `${name} is a meme coin born from the viral ${n} trend. Cute, chaotic, and community-driven.`,
+    'Technology': `${name} merges ${n} memes with crypto culture. The future of funny on Solana.`,
+    'Space': `${name} is going to the moon. Born from the ${n} viral movement.`,
+    'Food': `${name} serves up hot meme energy from the ${n} trend. Delicious gains ahead.`,
+    'Retro Gaming': `${name} brings retro gaming nostalgia. Born from the ${n} trend.`,
+    'Dark Humor': `${name} embraces the void. Born from the ${n} viral moment.`,
   };
 
-  try {
-    info.rawJson = localStorage.getItem(CACHE_KEY);
-    if (!info.rawJson) return info;
+  const mascotMap: Record<string, string> = {
+    'Animals': `A cute ${n} wearing sunglasses and holding a diamond.`,
+    'Technology': `A robot ${n} with glowing circuits and a degen grin.`,
+    'Space': `A cosmic ${n} floating in a sea of stars.`,
+    'Food': `A delicious ${n} with a golden glow.`,
+    'Retro Gaming': `A pixel-art ${n} in 8-bit style.`,
+    'Dark Humor': `A shadowy ${n} with glowing red eyes.`,
+  };
 
-    const parsed: unknown = JSON.parse(info.rawJson);
-    if (typeof parsed !== 'object' || parsed === null) return info;
+  const themeMap: Record<string, string> = {
+    'Animals': 'Cute & Chaotic', 'Technology': 'AI Meme', 'Space': 'Cosmic Meme',
+    'Food': 'Tasty Meme', 'Retro Gaming': '8-Bit Meme', 'Dark Humor': 'Dark Meme',
+  };
 
-    const env = parsed as Record<string, unknown>;
-    if (typeof env.version === 'number') info.schemaVersion = env.version;
-    info.versionMatch = info.schemaVersion === CACHE_SCHEMA_VERSION;
+  const desc = descMap[category] ?? `${name} is a viral meme coin inspired by the ${n} trend.`;
+  const mascot = mascotMap[category] ?? `A cool ${n} with sunglasses and a degen attitude.`;
+  const theme = themeMap[category] ?? 'Meme Energy';
+  const logoPrompt = `${mascot} Logo design, vector style, transparent background, high detail, professional crypto token art`;
+  const bannerPrompt = `Wide banner with ${n} theme, vibrant colors, community energy, professional crypto art`;
+  const launchTags = ['meme', 'solana', 'crypto', 'viral', ...n.toLowerCase().split(/\s+/).filter((w) => w.length >= 3)].slice(0, 8);
 
-    if (typeof env.timestamp === 'number') {
-      info.parsedEnvelope = env as unknown as CacheEnvelope;
-      info.ageMs = Date.now() - env.timestamp;
-      info.ageMinutes = Math.round(info.ageMs / 60000);
-      info.expired = info.ageMs > CACHE_TTL_MS;
-    }
-
-    if (Array.isArray(env.data)) {
-      const items = env.data as unknown[];
-      info.totalItems = items.length;
-      for (let i = 0; i < items.length; i++) {
-        const result = validateIdea(items[i], i);
-        if (result.valid) info.validItems++;
-        else {
-          info.invalidItems++;
-          info.validationErrors.push(result.errors.map((e) => `${e.field}: ${e.reason}`).join('; '));
-        }
-      }
-    }
-  } catch {
-    // parse failure — leave defaults
-  }
-
-  return info;
+  return { name, symbol, description: desc, theme, mascot, logoPrompt, bannerPrompt, launchTags };
 }
 
 // ── hook ────────────────────────────────────────────────────────────
 interface UseIntelResult {
-  ideas: MemeIdea[];
-  posts: Post[];
+  report: IntelReport | null;
+  narratives: MemeNarrative[];
   loading: boolean;
+  error: string | null;
   lastRefresh: number | null;
   refresh: () => void;
 }
 
 export function useIntelDiscovery(): UseIntelResult {
-  const [ideas, setIdeas] = useState<MemeIdea[]>(() => readCache().ideas);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(ideas.length === 0);
-  const [lastRefresh, setLastRefresh] = useState<number | null>(null);
-  const providersRef = useRef<MockMultiSourceProvider[]>(createAllProviders({ seed: 42, ideaCount: 10 }));
+  const cached = readCache();
+  const [report, setReport] = useState<IntelReport | null>(cached);
+  const [loading, setLoading] = useState(!cached);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<number | null>(cached?.generatedAt ?? null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const fetchAll = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
+    setError(null);
     try {
-      const providers = providersRef.current;
-      console.log(`[intel] fetching from ${providers.length} providers...`);
-      const results = await Promise.allSettled(
-        providers.map((p) => p.fetch()),
-      );
-      const allPosts: Post[] = [];
-      for (const r of results) {
-        if (r.status === 'fulfilled') allPosts.push(...r.value);
+      console.log(`[intel] fetching from ${INTEL_API_URL}`);
+      const res = await fetch(INTEL_API_URL, { signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json() as { ok: boolean; report: IntelReport | null; message?: string };
+      if (!body.ok) throw new Error(body.message ?? 'API returned error');
+      if (body.report) {
+        console.log(`[intel] received ${body.report.narratives.length} narratives from ${body.report.postsProcessed} posts`);
+        setReport(body.report);
+        writeCache(body.report);
+        setLastRefresh(body.report.generatedAt);
+      } else {
+        console.log('[intel] no report available from backend');
+        setReport(null);
+        setError('No data yet. Start the intel worker: npm run intel:worker');
       }
-      console.log(`[intel] collected ${allPosts.length} posts from providers`);
-      const now = Date.now();
-      const recent = allPosts.filter((p) => now - p.timestamp <= WINDOW_MS);
-      setPosts(recent);
-      const ideas = buildMemeIdeas({ posts: recent, now });
-      console.log(`[intel] generated ${ideas.length} meme ideas`);
-      setIdeas(ideas);
-      writeCache(ideas);
-      setLastRefresh(now);
     } catch (err) {
-      console.error('[intel] fetch failed, keeping stale data', err);
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.error('[intel] fetch failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to connect to intel backend');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void fetchAll();
-    const id = setInterval(() => void fetchAll(), REFRESH_MS);
-    return () => clearInterval(id);
-  }, [fetchAll]);
+    void fetchData();
+    const id = setInterval(() => void fetchData(), REFRESH_MS);
+    return () => { clearInterval(id); abortRef.current?.abort(); };
+  }, [fetchData]);
 
-  return { ideas, posts, loading, lastRefresh, refresh: fetchAll };
+  return {
+    report,
+    narratives: report?.narratives ?? [],
+    loading,
+    error,
+    lastRefresh,
+    refresh: fetchData,
+  };
 }
