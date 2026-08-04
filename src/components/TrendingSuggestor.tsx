@@ -1,76 +1,107 @@
 import { useRef, useState } from 'react';
 import type { BundleApi } from '../hooks/useBundle';
-import { useTrendingResearch } from '../hooks/useTrendingResearch';
-import type { MigrationCandidate } from '../utils/trendingEngine';
-import { buildAxiomUrl } from '../utils/trendingEngine';
+import { useTrendDiscovery } from '../hooks/useTrendDiscovery';
+import type { Tweet } from '../utils/trends/types';
+import type { IFeedProvider } from '../utils/trends/feedProvider';
+import { MockFeedProvider } from '../utils/trends/mockFeed';
 import { useToast } from './Toast';
 import { Spinner } from './Spinner';
 import { LaunchModal, type LaunchModalData } from './LaunchModal';
 
-function CandidateCard({
-  candidate,
-  onLaunch,
-}: {
-  candidate: MigrationCandidate;
-  onLaunch: (c: MigrationCandidate) => void;
-}) {
-  const axiomUrl = buildAxiomUrl(candidate.mintAddress);
+function formatAge(ageMs: number): string {
+  const mins = Math.floor(ageMs / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+function formatEngagement(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(n);
+}
+
+function formatTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function ScoreBar({ score }: { score: number }) {
+  const pct = Math.min(score, 100);
+  const color = score >= 70 ? 'bg-emerald-500' : score >= 45 ? 'bg-cyan-500' : 'bg-amber-500';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-800">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="font-mono text-xs font-bold text-zinc-200">{score.toFixed(1)}</span>
+    </div>
+  );
+}
+
+interface SuggestionCardProps {
+  mintAddress: string;
+  tokenName: string;
+  tokenSymbol: string;
+  imageUrl: string;
+  trendScore: number;
+  mentions24h: number;
+  uniqueAccounts: number;
+  totalEngagement: number;
+  tokenAgeMs: number;
+  firstDetectedAt: number;
+  matchedTopic: string;
+  dexscreenerUrl: string;
+  onLaunch: () => void;
+}
+
+function SuggestionCard(props: SuggestionCardProps) {
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleCardClick = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button, a, input')) return;
-    window.open(axiomUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleCopyMint = () => {
-    void navigator.clipboard.writeText(candidate.mintAddress);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void navigator.clipboard.writeText(props.mintAddress);
+    toast.push('success', 'Contract address copied');
     setCopied(true);
-    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-    copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 1500);
   };
-
-  const scoreColor =
-    candidate.migrationScore >= 70
-      ? 'border-emerald-500/30'
-      : candidate.migrationScore >= 45
-        ? 'border-cyan-500/30'
-        : 'border-amber-500/30';
 
   return (
     <div
-      className={`group cursor-pointer rounded-xl border bg-zinc-900/60 p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${scoreColor} hover:border-zinc-700`}
-      onClick={handleCardClick}
+      onClick={() => window.open(props.dexscreenerUrl, '_blank', 'noopener,noreferrer')}
+      className="group cursor-pointer rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition-all duration-300 hover:scale-[1.02] hover:border-cyan-500/40 hover:shadow-lg"
     >
       <div className="flex items-start gap-3">
         <img
-          src={candidate.imageUrl}
-          alt={candidate.name}
-          className="h-12 w-12 shrink-0 rounded-full border border-zinc-800 object-cover"
+          src={props.imageUrl}
+          alt={props.tokenName}
+          className="h-11 w-11 shrink-0 rounded-full border border-zinc-800 object-cover"
           onError={(e) => {
             (e.target as HTMLImageElement).src =
               'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjMjcyNzNhIi8+PHRleHQgeD0iMjAiIHk9IjI0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNjY2IiBmb250LXNpemU9IjEyIj4/PC90ZXh0Pjwvc3ZnPg==';
           }}
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <span className="font-mono text-sm font-bold text-zinc-100 truncate">
-                {candidate.name}
-              </span>
-              <span className="ml-2 font-mono text-xs text-cyan-400">{candidate.ticker}</span>
+              <span className="font-mono text-sm font-bold text-zinc-100 truncate">{props.tokenName}</span>
+              <span className="ml-2 font-mono text-xs text-cyan-400">{props.tokenSymbol}</span>
             </div>
+            <span className="shrink-0 rounded bg-fuchsia-950/60 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
+              Trend {props.trendScore.toFixed(1)}
+            </span>
           </div>
 
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 font-mono text-[10px] text-zinc-500 break-all">
-              {candidate.mintAddress}
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 break-all font-mono text-[10px] text-zinc-500">
+              {props.mintAddress}
             </span>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCopyMint();
-              }}
+              onClick={handleCopy}
               className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
                 copied
                   ? 'border-emerald-500/50 bg-emerald-950/40 text-emerald-400'
@@ -80,96 +111,82 @@ function CandidateCard({
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
-
-          <div className="mt-2 flex items-center gap-3">
-            <div className="text-center">
-              <div className="font-mono text-lg font-bold text-emerald-400">
-                {candidate.previousMigrations}
-              </div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600">
-                Previous Migrated Tokens
-              </div>
-            </div>
-            <div className="h-8 w-px bg-zinc-800" />
-            <div className="text-center">
-              <div className="font-mono text-lg font-bold text-cyan-400">
-                {Math.round(candidate.progressPct)}%
-              </div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600">Progress</div>
-            </div>
-            <div className="h-8 w-px bg-zinc-800" />
-            <div className="text-center">
-              <div className="font-mono text-lg font-bold text-zinc-300">
-                {candidate.migrationScore.toFixed(1)}
-              </div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600">Score</div>
-            </div>
-          </div>
         </div>
       </div>
 
-      <p className="mt-3 text-[11px] leading-relaxed text-zinc-500 line-clamp-2">
-        {candidate.rationale}
-      </p>
-
-      {candidate.similarNames.length > 0 && (
-        <div className="mt-2">
-          <span className="text-[10px] text-zinc-600">Matched migrated names: </span>
-          <span className="text-[11px] text-zinc-400">
-            {candidate.similarNames.slice(0, 5).join(', ')}
-            {candidate.similarNames.length > 5 && ` +${candidate.similarNames.length - 5} more`}
-          </span>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Mentions (24h)</div>
+          <div className="font-mono text-sm font-bold text-zinc-100">{props.mentions24h}</div>
         </div>
-      )}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Unique Accounts</div>
+          <div className="font-mono text-sm font-bold text-zinc-100">{props.uniqueAccounts}</div>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Total Engagement</div>
+          <div className="font-mono text-sm font-bold text-zinc-100">
+            {formatEngagement(props.totalEngagement)}
+          </div>
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Token Age</div>
+          <div className="font-mono text-sm font-bold text-zinc-100">{formatAge(props.tokenAgeMs)}</div>
+        </div>
+      </div>
 
-      <div className="mt-3 flex items-center justify-between">
-        <span className="text-[11px] text-zinc-600">Final Stretch · {candidate.progressPct.toFixed(0)}% progress</span>
+      <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-600">
+        <span>First detected: {formatTime(props.firstDetectedAt)}</span>
+        <span>Matched: {props.matchedTopic}</span>
+      </div>
+
+      <div className="mt-2">
+        <div className="text-[10px] uppercase tracking-wider text-zinc-600">Trend Score</div>
+        <ScoreBar score={props.trendScore} />
+      </div>
+
+      <div className="mt-3 flex gap-2">
         <a
-          href={axiomUrl}
+          href={props.dexscreenerUrl}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-cyan-400 transition-colors"
+          className="flex-1 rounded-md border border-zinc-700 px-3 py-2 text-center text-xs font-semibold text-zinc-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-300"
         >
-          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
-          View on Axiom
+          Open on DexScreener
         </a>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onLaunch();
+          }}
+          className="flex-1 rounded-md bg-fuchsia-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-fuchsia-500"
+        >
+          Launch This Coin
+        </button>
       </div>
-
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onLaunch(candidate);
-        }}
-        className="mt-3 w-full rounded-md bg-fuchsia-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-fuchsia-500"
-      >
-        Launch This Coin (Edit First)
-      </button>
     </div>
   );
 }
 
-export function TrendingSuggestor({ api }: { api: BundleApi }) {
-  const { candidates, isLoading, error, lastUpdated, sourceSummary, nextRefreshIn, refresh } =
-    useTrendingResearch();
+export function TrendingSuggestor({ api, feedProvider }: { api: BundleApi; feedProvider?: IFeedProvider }) {
+  const { suggestions, topics, isLoading, error, lastUpdated, tweetsProcessed, nextRefreshIn, refresh } =
+    useTrendDiscovery(feedProvider);
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<Partial<LaunchModalData> | undefined>(undefined);
   const [modalTitle, setModalTitle] = useState('Launch Meme Coin');
+  const [view, setView] = useState<'suggestions' | 'topics'>('suggestions');
 
-  const handleLaunchFromCandidate = (c: MigrationCandidate) => {
+  const handleLaunch = (s: (typeof suggestions)[number]) => {
     setModalData({
-      name: c.name,
-      ticker: c.ticker,
-      description: c.rationale,
-      imageUrl: c.imageUrl,
+      name: s.tokenName,
+      ticker: s.tokenSymbol,
+      description: `Trending topic "${s.matchedTopic}" — ${s.mentions24h} mentions, ${s.uniqueAccounts} accounts in 24h.`,
+      imageUrl: s.imageUrl,
       buyAmount: 0.1,
     });
-    setModalTitle(`Launch ${c.name} (${c.ticker})`);
+    setModalTitle(`Launch ${s.tokenName} (${s.tokenSymbol})`);
     setModalOpen(true);
   };
 
@@ -190,15 +207,15 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-mono text-sm font-semibold uppercase tracking-wider text-zinc-400">
-            Migration Predictor
+            X Trend Discovery
           </h2>
           <p className="mt-1 text-xs text-zinc-600">
-            Final Stretch tokens with 2+ previous migrations. Ranked by migration count.
+            Narrative engine over the last 24h, mapped to Pump.fun Final Stretch.
           </p>
         </div>
         <div className="flex items-center gap-3">
           {nextRefreshIn > 0 && (
-            <span className="text-[11px] text-zinc-600 font-mono">
+            <span className="font-mono text-[11px] text-zinc-600">
               Refresh in {Math.floor(nextRefreshIn / 60)}:{String(nextRefreshIn % 60).padStart(2, '0')}
             </span>
           )}
@@ -213,50 +230,101 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
         </div>
       </div>
 
+      <div className="mb-4 flex gap-2">
+        <button
+          onClick={() => setView('suggestions')}
+          className={`rounded-md px-3 py-1.5 font-mono text-xs font-semibold transition-colors ${
+            view === 'suggestions' ? 'bg-fuchsia-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          Suggestions
+        </button>
+        <button
+          onClick={() => setView('topics')}
+          className={`rounded-md px-3 py-1.5 font-mono text-xs font-semibold transition-colors ${
+            view === 'topics' ? 'bg-fuchsia-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          Trend Topics
+        </button>
+      </div>
+
       {error && (
         <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
           ⚠ {error}
         </div>
       )}
 
-      {sourceSummary && (
-        <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-2 text-[11px] text-zinc-500">
-          Sources: {sourceSummary}
-          {lastUpdated > 0 && (
-            <span className="ml-2 text-zinc-600">(updated {timeSince}s ago)</span>
-          )}
-        </div>
-      )}
+      {sourceBanner(timeSince, tweetsProcessed, topics.length, suggestions.length)}
 
-      {isLoading && candidates.length === 0 ? (
+      {isLoading && suggestions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <Spinner className="h-8 w-8 text-cyan-400" />
-          <p className="mt-4 font-mono text-sm text-zinc-500">Scanning Final Stretch tokens...</p>
+          <p className="mt-4 font-mono text-sm text-zinc-500">Scanning X for trends...</p>
         </div>
-      ) : candidates.length === 0 ? (
-        <div className="flex flex-col items-center py-16 text-center">
-          <p className="text-sm text-zinc-600">
-            No migration candidates found with 2+ previous migrations.
-          </p>
-          <p className="mt-1 text-xs text-zinc-700">
-            Try again later as new tokens enter Final Stretch.
-          </p>
-          <button
-            onClick={refresh}
-            className="mt-4 inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-950/30 px-4 py-2 text-sm font-semibold text-cyan-300 transition-colors hover:bg-cyan-900/40"
-          >
-            Retry
-          </button>
-        </div>
+      ) : view === 'suggestions' ? (
+        suggestions.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <p className="text-sm text-zinc-600">
+              No trending topics matched a Final Stretch token yet.
+            </p>
+            <button
+              onClick={refresh}
+              className="mt-4 inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-950/30 px-4 py-2 text-sm font-semibold text-cyan-300 transition-colors hover:bg-cyan-900/40"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {suggestions.map((s) => (
+              <SuggestionCard
+                key={s.id}
+                mintAddress={s.mintAddress}
+                tokenName={s.tokenName}
+                tokenSymbol={s.tokenSymbol}
+                imageUrl={s.imageUrl}
+                trendScore={s.trendScore}
+                mentions24h={s.mentions24h}
+                uniqueAccounts={s.uniqueAccounts}
+                totalEngagement={s.totalEngagement}
+                tokenAgeMs={s.tokenAgeMs}
+                firstDetectedAt={s.firstDetectedAt}
+                matchedTopic={s.matchedTopic}
+                dexscreenerUrl={s.dexscreenerUrl}
+                onLaunch={() => handleLaunch(s)}
+              />
+            ))}
+          </div>
+        )
+      ) : topics.length === 0 ? (
+        <div className="py-16 text-center text-sm text-zinc-600">No topics detected yet.</div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {candidates.map((c) => (
-            <CandidateCard
-              key={c.id}
-              candidate={c}
-              onLaunch={handleLaunchFromCandidate}
-            />
-          ))}
+        <div className="overflow-hidden rounded-lg border border-zinc-800">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-zinc-950/60 font-mono text-[10px] uppercase tracking-wider text-zinc-600">
+              <tr>
+                <th className="px-3 py-2">Topic</th>
+                <th className="px-3 py-2">Mentions</th>
+                <th className="px-3 py-2">Accounts</th>
+                <th className="px-3 py-2">Engagement</th>
+                <th className="px-3 py-2">Score</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800">
+              {topics.map((t, i) => (
+                <tr key={`${t.canonical}-${i}`} className="bg-zinc-900/40">
+                  <td className="px-3 py-2 font-mono font-semibold text-cyan-300">{t.display}</td>
+                  <td className="px-3 py-2 text-zinc-300">{t.mentionCount}</td>
+                  <td className="px-3 py-2 text-zinc-300">{t.uniqueAccounts}</td>
+                  <td className="px-3 py-2 text-zinc-300">{formatEngagement(t.totalEngagement)}</td>
+                  <td className="px-3 py-2">
+                    <ScoreBar score={t.trendScore} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -270,5 +338,22 @@ export function TrendingSuggestor({ api }: { api: BundleApi }) {
         onCancel={() => setModalOpen(false)}
       />
     </section>
+  );
+}
+
+function sourceBanner(
+  timeSince: number,
+  tweetsProcessed: number,
+  topicCount: number,
+  suggestionCount: number,
+) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-2 text-[11px] text-zinc-500">
+      <span>Source: Mock feed (Playwright X + official API swappable)</span>
+      <span>{tweetsProcessed} tweets</span>
+      <span>{topicCount} topics</span>
+      <span>{suggestionCount} suggestions</span>
+      {timeSince > 0 && <span>(updated {timeSince}s ago)</span>}
+    </div>
   );
 }

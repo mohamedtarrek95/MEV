@@ -58,7 +58,7 @@ export default function App() {
             Pump.fun Launchpad
           </button>
           <button onClick={() => setTab('suggest')} className={tabCls(tab === 'suggest')}>
-            📈 Migration Predictor
+            📈 X Trend Discovery
           </button>
         </nav>
 

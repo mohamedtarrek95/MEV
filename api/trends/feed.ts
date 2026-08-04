@@ -1,0 +1,3 @@
+export const TREND_WINDOW_HOURS = 24;
+export const TWENTY_FOUR_HOURS_MS = TREND_WINDOW_HOURS * 60 * 60 * 1000;
+export const REFRESH_INTERVAL_MS = 4 * 60 * 1000;

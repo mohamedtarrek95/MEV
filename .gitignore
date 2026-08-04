@@ -24,3 +24,6 @@ Thumbs.db
 
 # Vercel
 .vercel/
+
+# Trend discovery cache
+api/trends/.cache/
