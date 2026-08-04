@@ -1,5 +1,4 @@
-import { useState, type ReactNode } from 'react';
-import type { BundleApi } from '../hooks/useBundle';
+import { useState, useEffect, type ReactNode } from 'react';
 import { Spinner } from './Spinner';
 
 const inputCls =
@@ -30,6 +29,7 @@ interface LaunchModalProps {
   initialData?: Partial<LaunchModalData>;
   busy: boolean;
   onLaunch: (data: LaunchModalData) => void;
+  onSaveDraft?: (data: LaunchModalData) => void;
   onCancel: () => void;
 }
 
@@ -39,15 +39,44 @@ export function LaunchModal({
   initialData,
   busy,
   onLaunch,
+  onSaveDraft,
   onCancel,
 }: LaunchModalProps) {
+  const [autoFill, setAutoFill] = useState(true);
   const [name, setName] = useState(initialData?.name ?? '');
   const [ticker, setTicker] = useState(initialData?.ticker ?? '');
   const [description, setDescription] = useState(initialData?.description ?? '');
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? '');
   const [buyAmount, setBuyAmount] = useState(initialData?.buyAmount ?? 0.1);
 
+  useEffect(() => {
+    if (!open) return;
+    setAutoFill(true);
+    setName(initialData?.name ?? '');
+    setTicker(initialData?.ticker ?? '');
+    setDescription(initialData?.description ?? '');
+    setImageUrl(initialData?.imageUrl ?? '');
+    setBuyAmount(initialData?.buyAmount ?? 0.1);
+  }, [open, initialData]);
+
+  useEffect(() => {
+    if (!autoFill) {
+      setName('');
+      setTicker('');
+      setDescription('');
+      setImageUrl('');
+      setBuyAmount(0.1);
+    } else if (initialData) {
+      setName(initialData.name ?? '');
+      setTicker(initialData.ticker ?? '');
+      setDescription(initialData.description ?? '');
+      setImageUrl(initialData.imageUrl ?? '');
+      setBuyAmount(initialData.buyAmount ?? 0.1);
+    }
+  }, [autoFill, initialData]);
+
   const canLaunch = !busy && name.trim().length > 0 && ticker.trim().length > 0 && buyAmount > 0;
+  const canSaveDraft = !busy && name.trim().length > 0 && ticker.trim().length > 0;
 
   const handleLaunch = () => {
     if (!canLaunch) return;
@@ -60,14 +89,38 @@ export function LaunchModal({
     });
   };
 
+  const handleSaveDraft = () => {
+    if (!canSaveDraft || !onSaveDraft) return;
+    onSaveDraft({
+      name: name.trim(),
+      ticker: ticker.trim().toUpperCase(),
+      description: description.trim(),
+      imageUrl: imageUrl.trim(),
+      buyAmount,
+    });
+  };
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-xl border border-cyan-500/30 bg-zinc-900 p-6 shadow-2xl">
+      <div className="w-full max-w-lg rounded-xl border border-cyan-500/30 bg-zinc-900 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         <h3 className="font-mono text-lg font-bold text-cyan-400">{title}</h3>
 
-        <div className="mt-5 grid gap-4">
+        {initialData && (
+          <label className="mt-3 flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={autoFill}
+              onChange={(e) => setAutoFill(e.target.checked)}
+              disabled={busy}
+              className="h-4 w-4 rounded border-zinc-700 bg-zinc-800 text-cyan-500 focus:ring-cyan-500/30"
+            />
+            <span className="text-xs text-zinc-400">Auto-fill from suggestion</span>
+          </label>
+        )}
+
+        <div className="mt-4 grid gap-4">
           <Field label="Coin Name">
             <input
               value={name}
@@ -140,7 +193,7 @@ export function LaunchModal({
           </Field>
         </div>
 
-        <div className="mt-6 flex justify-end gap-3">
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
           <button
             onClick={onCancel}
             disabled={busy}
@@ -148,6 +201,15 @@ export function LaunchModal({
           >
             Cancel
           </button>
+          {onSaveDraft && (
+            <button
+              onClick={handleSaveDraft}
+              disabled={!canSaveDraft}
+              className="inline-flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-950/30 px-4 py-2 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-900/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Save as Draft
+            </button>
+          )}
           <button
             onClick={handleLaunch}
             disabled={!canLaunch}

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   type MemeSuggestion,
+  type CoinDraft,
   MOCK_SUGGESTIONS,
   buildSuggestionFromTopic,
   rankSuggestions,
@@ -8,6 +9,7 @@ import {
 } from '../utils/suggestionEngine';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const DRAFTS_KEY = 'meme-suggestor-drafts';
 
 interface CacheEntry {
   suggestions: MemeSuggestion[];
@@ -122,12 +124,31 @@ function mergeKeywords(twitterKw: string[], dexKw: string[], geckoKw: string[]):
     .map(([k]) => k);
 }
 
+function loadDrafts(): CoinDraft[] {
+  try {
+    const raw = localStorage.getItem(DRAFTS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as CoinDraft[];
+  } catch {
+    return [];
+  }
+}
+
+function saveDrafts(drafts: CoinDraft[]): void {
+  try {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function useMemeResearch() {
   const [suggestions, setSuggestions] = useState<MemeSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [sourceInfo, setSourceInfo] = useState<string>('');
+  const [drafts, setDrafts] = useState<CoinDraft[]>(() => loadDrafts());
   const cacheRef = useRef<CacheEntry | null>(null);
 
   const fetchSuggestions = useCallback(async (force = false) => {
@@ -180,6 +201,7 @@ export function useMemeResearch() {
             dexVolumeChange: dexToken?.volumeChange ?? Math.floor(Math.random() * 300),
             holderCount: dexToken?.holders ?? Math.floor(Math.random() * 500),
             hoursSinceLaunch: Math.floor(Math.random() * 72),
+            mintAddress: dexToken?.address || undefined,
           });
         });
       }
@@ -227,6 +249,36 @@ export function useMemeResearch() {
     cacheRef.current = null;
   }, []);
 
+  const addDraft = useCallback((draft: Omit<CoinDraft, 'id' | 'createdAt'>) => {
+    const newDraft: CoinDraft = {
+      ...draft,
+      id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: Date.now(),
+    };
+    setDrafts((prev) => {
+      const next = [newDraft, ...prev];
+      saveDrafts(next);
+      return next;
+    });
+    return newDraft;
+  }, []);
+
+  const deleteDraft = useCallback((draftId: string) => {
+    setDrafts((prev) => {
+      const next = prev.filter((d) => d.id !== draftId);
+      saveDrafts(next);
+      return next;
+    });
+  }, []);
+
+  const updateDraft = useCallback((draftId: string, patch: Partial<CoinDraft>) => {
+    setDrafts((prev) => {
+      const next = prev.map((d) => (d.id === draftId ? { ...d, ...patch } : d));
+      saveDrafts(next);
+      return next;
+    });
+  }, []);
+
   return {
     suggestions,
     loading,
@@ -235,5 +287,9 @@ export function useMemeResearch() {
     sourceInfo,
     fetchSuggestions,
     clearCache,
+    drafts,
+    addDraft,
+    deleteDraft,
+    updateDraft,
   };
 }

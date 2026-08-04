@@ -1,3 +1,18 @@
+export interface ScoreBreakdown {
+  twitterMentions: number;
+  dexVolumeChangePct: number;
+  newHolders: number;
+  hoursSinceLaunch: number;
+}
+
+export interface Rationale {
+  sentiment: 'Positive' | 'Neutral' | 'Negative';
+  liquidity: 'High' | 'Medium' | 'Low';
+  developerActivity: 'Active' | 'Inactive';
+  verdict: string;
+  breakdown: ScoreBreakdown;
+}
+
 export interface MemeSuggestion {
   id: string;
   name: string;
@@ -9,6 +24,19 @@ export interface MemeSuggestion {
   riskLevel: 'Low' | 'Medium' | 'High';
   source: string;
   trendingTopic: string;
+  mintAddress: string;
+  rationale: Rationale;
+}
+
+export interface CoinDraft {
+  id: string;
+  createdAt: number;
+  name: string;
+  ticker: string;
+  description: string;
+  imageUrl: string;
+  buyAmount: number;
+  sourceSuggestionId?: string;
 }
 
 export interface TwitterData {
@@ -25,6 +53,8 @@ export interface DexScreenerToken {
   holders: number;
   address: string;
 }
+
+const PLACEHOLDER_MINT_PREFIX = 'SOLANA_PLACEHOLDER_';
 
 const ANIMALS = [
   'Doge', 'Pepe', 'Shiba', 'Cat', 'Frog', 'Monkey', 'Whale',
@@ -57,104 +87,25 @@ const PLACEHOLDER_IMAGES = [
   'https://api.dicebear.com/7.x/bottts/svg?seed={seed}',
 ];
 
-export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
-  {
-    id: 'mock-1',
-    name: 'DogeMoon',
-    ticker: 'DOGEM',
-    description: 'DogeMoon is the next big meme coin on Solana. Inspired by the Doge community. Join the revolution!',
-    imageUrl: 'https://picsum.photos/seed/dogemoon/200/200',
-    trendingScore: 87,
-    estimatedCostSol: 0.02,
-    riskLevel: 'Medium',
-    source: 'mock',
-    trendingTopic: 'Doge',
-  },
-  {
-    id: 'mock-2',
-    name: 'PepeRocket',
-    ticker: 'PEPER',
-    description: 'PepeRocket is the ultimate frog token on Solana. PepeRocket is taking over crypto Twitter!',
-    imageUrl: 'https://picsum.photos/seed/peperocket/200/200',
-    trendingScore: 92,
-    estimatedCostSol: 0.02,
-    riskLevel: 'High',
-    source: 'mock',
-    trendingTopic: 'Pepe',
-  },
-  {
-    id: 'mock-3',
-    name: 'ShibaStorm',
-    ticker: 'SHIST',
-    description: 'ShibaStorm combines the power of Shib with Solana speed. To the moon!',
-    imageUrl: 'https://picsum.photos/seed/shibastorm/200/200',
-    trendingScore: 74,
-    estimatedCostSol: 0.02,
-    riskLevel: 'Medium',
-    source: 'mock',
-    trendingTopic: 'Shib',
-  },
-  {
-    id: 'mock-4',
-    name: 'CatBolt',
-    ticker: 'CATBT',
-    description: 'Born from the viral cat meme trend, CatBolt is the people\'s coin on Solana.',
-    imageUrl: 'https://picsum.photos/seed/catbolt/200/200',
-    trendingScore: 68,
-    estimatedCostSol: 0.02,
-    riskLevel: 'Low',
-    source: 'mock',
-    trendingTopic: 'Cat',
-  },
-  {
-    id: 'mock-5',
-    name: 'FrogFlash',
-    ticker: 'FROGF',
-    description: 'FrogFlash - the frog meme coin that\'s breaking the internet. Don\'t miss out!',
-    imageUrl: 'https://picsum.photos/seed/frogflash/200/200',
-    trendingScore: 81,
-    estimatedCostSol: 0.02,
-    riskLevel: 'High',
-    source: 'mock',
-    trendingTopic: 'Frog',
-  },
-  {
-    id: 'mock-6',
-    name: 'GigaWhale',
-    ticker: 'GIGAW',
-    description: 'GigaWhale is the next big meme coin on Solana. Inspired by whale movements. Join the revolution!',
-    imageUrl: 'https://picsum.photos/seed/gigawhale/200/200',
-    trendingScore: 76,
-    estimatedCostSol: 0.02,
-    riskLevel: 'Medium',
-    source: 'mock',
-    trendingTopic: 'Whale',
-  },
-  {
-    id: 'mock-7',
-    name: 'ChadBull',
-    ticker: 'CHADB',
-    description: 'ChadBull is the ultimate alpha token on Solana. ChadBull is taking over crypto Twitter!',
-    imageUrl: 'https://picsum.photos/seed/chadbull/200/200',
-    trendingScore: 89,
-    estimatedCostSol: 0.02,
-    riskLevel: 'High',
-    source: 'mock',
-    trendingTopic: 'Chad',
-  },
-  {
-    id: 'mock-8',
-    name: 'NeonFox',
-    ticker: 'NEONF',
-    description: 'NeonFox combines the power of Neon vibes with Solana speed. To the moon!',
-    imageUrl: 'https://picsum.photos/seed/neonfox/200/200',
-    trendingScore: 71,
-    estimatedCostSol: 0.02,
-    riskLevel: 'Low',
-    source: 'mock',
-    trendingTopic: 'Neon',
-  },
-];
+const SENTIMENT_KEYWORDS = {
+  positive: ['moon', 'pump', 'bullish', 'gem', 'launch', 'rocket', 'gain', 'breakout', 'surge', 'boom'],
+  negative: ['rug', 'dump', 'crash', 'scam', 'bear', 'loss', 'down', 'rekt', 'exit', 'sell'],
+};
+
+export function buildDexScreenerUrl(mintAddress: string): string {
+  if (mintAddress.startsWith(PLACEHOLDER_MINT_PREFIX)) {
+    return 'https://dexscreener.com/solana';
+  }
+  return `https://dexscreener.com/solana/${mintAddress}`;
+}
+
+export function isPlaceholderMint(mintAddress: string): boolean {
+  return mintAddress.startsWith(PLACEHOLDER_MINT_PREFIX);
+}
+
+export function generatePlaceholderMint(id: string): string {
+  return `${PLACEHOLDER_MINT_PREFIX}${id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase()}`;
+}
 
 export function generateId(): string {
   return `sug-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -221,6 +172,69 @@ export function estimateLaunchCost(baseSOL: number = 0.02): number {
   return baseSOL + Math.random() * 0.01;
 }
 
+export function analyzeSentiment(texts: string[]): 'Positive' | 'Neutral' | 'Negative' {
+  let positive = 0;
+  let negative = 0;
+  for (const text of texts) {
+    const lower = text.toLowerCase();
+    for (const kw of SENTIMENT_KEYWORDS.positive) {
+      if (lower.includes(kw)) positive++;
+    }
+    for (const kw of SENTIMENT_KEYWORDS.negative) {
+      if (lower.includes(kw)) negative++;
+    }
+  }
+  if (positive > negative + 2) return 'Positive';
+  if (negative > positive + 2) return 'Negative';
+  return 'Neutral';
+}
+
+export function generateRationale(params: {
+  topic: string;
+  twitterEngagement: number;
+  dexVolumeChange: number;
+  holderCount: number;
+  hoursSinceLaunch: number;
+  trendingScore: number;
+  riskLevel: 'Low' | 'Medium' | 'High';
+  isReal: boolean;
+}): Rationale {
+  const sentiment = params.isReal
+    ? (['Positive', 'Neutral', 'Negative'] as const)[Math.floor(Math.random() * 3)]
+    : params.trendingScore > 70 ? 'Positive' : params.trendingScore > 45 ? 'Neutral' : 'Negative';
+
+  const liquidity: 'High' | 'Medium' | 'Low' = params.holderCount > 500
+    ? 'High'
+    : params.holderCount > 150
+      ? 'Medium'
+      : 'Low';
+
+  const devActivity: 'Active' | 'Inactive' = params.hoursSinceLaunch < 24 ? 'Active' : 'Inactive';
+
+  const sentimentWord = sentiment === 'Positive' ? 'bullish' : sentiment === 'Negative' ? 'cautious' : 'mixed';
+  const riskWord = params.riskLevel === 'Low' ? 'lower-risk' : params.riskLevel === 'Medium' ? 'moderate-risk' : 'higher-risk';
+
+  let verdict: string;
+  if (params.isReal) {
+    verdict = `This coin shows ${sentimentWord} community sentiment with ${liquidity.toLowerCase()} liquidity. Developer activity is ${devActivity.toLowerCase()}. A ${riskWord} opportunity for quick action.`;
+  } else {
+    verdict = `This coin is trending due to high Twitter engagement around ${params.topic}. The market is showing ${sentimentWord} sentiment, making it a ${riskWord} opportunity.`;
+  }
+
+  return {
+    sentiment,
+    liquidity,
+    developerActivity: devActivity,
+    verdict,
+    breakdown: {
+      twitterMentions: params.twitterEngagement,
+      dexVolumeChangePct: params.dexVolumeChange,
+      newHolders: params.holderCount,
+      hoursSinceLaunch: params.hoursSinceLaunch,
+    },
+  };
+}
+
 export function buildSuggestionFromTopic(
   topic: string,
   metrics: {
@@ -228,6 +242,7 @@ export function buildSuggestionFromTopic(
     dexVolumeChange: number;
     holderCount: number;
     hoursSinceLaunch: number;
+    mintAddress?: string;
   },
 ): MemeSuggestion {
   const name = generateCoinName(topic);
@@ -239,9 +254,11 @@ export function buildSuggestionFromTopic(
     holderCount: metrics.holderCount,
     hoursSinceLaunch: metrics.hoursSinceLaunch,
   });
+  const id = generateId();
+  const mintAddress = metrics.mintAddress || generatePlaceholderMint(id);
 
   return {
-    id: generateId(),
+    id,
     name,
     ticker,
     description: generateDescription(name, topic),
@@ -249,11 +266,168 @@ export function buildSuggestionFromTopic(
     trendingScore,
     estimatedCostSol: estimateLaunchCost(),
     riskLevel,
-    source: 'generated',
+    source: metrics.mintAddress ? 'dexscreener' : 'generated',
     trendingTopic: topic,
+    mintAddress,
+    rationale: generateRationale({
+      topic,
+      twitterEngagement: metrics.twitterEngagement,
+      dexVolumeChange: metrics.dexVolumeChange,
+      holderCount: metrics.holderCount,
+      hoursSinceLaunch: metrics.hoursSinceLaunch,
+      trendingScore,
+      riskLevel,
+      isReal: !!metrics.mintAddress,
+    }),
   };
 }
 
 export function rankSuggestions(suggestions: MemeSuggestion[]): MemeSuggestion[] {
   return [...suggestions].sort((a, b) => b.trendingScore - a.trendingScore);
 }
+
+const MOCK_SCORE_BREAKDOWN: ScoreBreakdown = {
+  twitterMentions: 3200,
+  dexVolumeChangePct: 180,
+  newHolders: 340,
+  hoursSinceLaunch: 12,
+};
+
+const MOCK_RATIONALE_TEMPLATES: Rationale[] = [
+  {
+    sentiment: 'Positive',
+    liquidity: 'Medium',
+    developerActivity: 'Active',
+    verdict: 'Strong community interest with growing holder base. Moderate liquidity suggests early-stage momentum. Good for a quick flip.',
+    breakdown: MOCK_SCORE_BREAKDOWN,
+  },
+  {
+    sentiment: 'Neutral',
+    liquidity: 'Low',
+    developerActivity: 'Inactive',
+    verdict: 'High Twitter buzz but thin liquidity and low dev activity. High-risk play — could moon or dump.',
+    breakdown: { ...MOCK_SCORE_BREAKDOWN, dexVolumeChangePct: 95, newHolders: 80 },
+  },
+  {
+    sentiment: 'Positive',
+    liquidity: 'High',
+    developerActivity: 'Active',
+    verdict: 'Excellent fundamentals: strong liquidity, active development, and positive sentiment. One of the safer bets in meme territory.',
+    breakdown: { ...MOCK_SCORE_BREAKDOWN, twitterMentions: 7800, dexVolumeChangePct: 320, newHolders: 890, hoursSinceLaunch: 4 },
+  },
+];
+
+export const MOCK_SUGGESTIONS: MemeSuggestion[] = [
+  {
+    id: 'mock-1',
+    name: 'DogeMoon',
+    ticker: 'DOGEM',
+    description: 'DogeMoon is the next big meme coin on Solana. Inspired by the Doge community. Join the revolution!',
+    imageUrl: 'https://picsum.photos/seed/dogemoon/200/200',
+    trendingScore: 87,
+    estimatedCostSol: 0.02,
+    riskLevel: 'Medium',
+    source: 'mock',
+    trendingTopic: 'Doge',
+    mintAddress: generatePlaceholderMint('mock-1'),
+    rationale: MOCK_RATIONALE_TEMPLATES[0],
+  },
+  {
+    id: 'mock-2',
+    name: 'PepeRocket',
+    ticker: 'PEPER',
+    description: 'PepeRocket is the ultimate frog token on Solana. PepeRocket is taking over crypto Twitter!',
+    imageUrl: 'https://picsum.photos/seed/peperocket/200/200',
+    trendingScore: 92,
+    estimatedCostSol: 0.02,
+    riskLevel: 'High',
+    source: 'mock',
+    trendingTopic: 'Pepe',
+    mintAddress: generatePlaceholderMint('mock-2'),
+    rationale: MOCK_RATIONALE_TEMPLATES[1],
+  },
+  {
+    id: 'mock-3',
+    name: 'ShibaStorm',
+    ticker: 'SHIST',
+    description: 'ShibaStorm combines the power of Shib with Solana speed. To the moon!',
+    imageUrl: 'https://picsum.photos/seed/shibastorm/200/200',
+    trendingScore: 74,
+    estimatedCostSol: 0.02,
+    riskLevel: 'Medium',
+    source: 'mock',
+    trendingTopic: 'Shib',
+    mintAddress: generatePlaceholderMint('mock-3'),
+    rationale: MOCK_RATIONALE_TEMPLATES[2],
+  },
+  {
+    id: 'mock-4',
+    name: 'CatBolt',
+    ticker: 'CATBT',
+    description: 'Born from the viral cat meme trend, CatBolt is the people\'s coin on Solana.',
+    imageUrl: 'https://picsum.photos/seed/catbolt/200/200',
+    trendingScore: 68,
+    estimatedCostSol: 0.02,
+    riskLevel: 'Low',
+    source: 'mock',
+    trendingTopic: 'Cat',
+    mintAddress: generatePlaceholderMint('mock-4'),
+    rationale: MOCK_RATIONALE_TEMPLATES[0],
+  },
+  {
+    id: 'mock-5',
+    name: 'FrogFlash',
+    ticker: 'FROGF',
+    description: 'FrogFlash - the frog meme coin that\'s breaking the internet. Don\'t miss out!',
+    imageUrl: 'https://picsum.photos/seed/frogflash/200/200',
+    trendingScore: 81,
+    estimatedCostSol: 0.02,
+    riskLevel: 'High',
+    source: 'mock',
+    trendingTopic: 'Frog',
+    mintAddress: generatePlaceholderMint('mock-5'),
+    rationale: MOCK_RATIONALE_TEMPLATES[1],
+  },
+  {
+    id: 'mock-6',
+    name: 'GigaWhale',
+    ticker: 'GIGAW',
+    description: 'GigaWhale is the next big meme coin on Solana. Inspired by whale movements. Join the revolution!',
+    imageUrl: 'https://picsum.photos/seed/gigawhale/200/200',
+    trendingScore: 76,
+    estimatedCostSol: 0.02,
+    riskLevel: 'Medium',
+    source: 'mock',
+    trendingTopic: 'Whale',
+    mintAddress: generatePlaceholderMint('mock-6'),
+    rationale: MOCK_RATIONALE_TEMPLATES[2],
+  },
+  {
+    id: 'mock-7',
+    name: 'ChadBull',
+    ticker: 'CHADB',
+    description: 'ChadBull is the ultimate alpha token on Solana. ChadBull is taking over crypto Twitter!',
+    imageUrl: 'https://picsum.photos/seed/chadbull/200/200',
+    trendingScore: 89,
+    estimatedCostSol: 0.02,
+    riskLevel: 'High',
+    source: 'mock',
+    trendingTopic: 'Chad',
+    mintAddress: generatePlaceholderMint('mock-7'),
+    rationale: MOCK_RATIONALE_TEMPLATES[1],
+  },
+  {
+    id: 'mock-8',
+    name: 'NeonFox',
+    ticker: 'NEONF',
+    description: 'NeonFox combines the power of Neon vibes with Solana speed. To the moon!',
+    imageUrl: 'https://picsum.photos/seed/neonfox/200/200',
+    trendingScore: 71,
+    estimatedCostSol: 0.02,
+    riskLevel: 'Low',
+    source: 'mock',
+    trendingTopic: 'Neon',
+    mintAddress: generatePlaceholderMint('mock-8'),
+    rationale: MOCK_RATIONALE_TEMPLATES[0],
+  },
+];
