@@ -7,7 +7,7 @@ import { WalletCard } from './components/WalletCard';
 import { ProgressBar } from './components/ProgressBar';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PumpLaunchpad } from './components/PumpLaunchpad';
-import { MemeSuggestor } from './components/MemeSuggestor';
+import { TrendingSuggestor } from './components/TrendingSuggestor';
 import { formatToken } from './utils/format';
 
 type Tab = 'bundle' | 'pump' | 'suggest';
@@ -58,7 +58,7 @@ export default function App() {
             Pump.fun Launchpad
           </button>
           <button onClick={() => setTab('suggest')} className={tabCls(tab === 'suggest')}>
-            🔍 Meme Coin Suggestor
+            📈 Trending Suggestor
           </button>
         </nav>
 
@@ -112,7 +112,7 @@ export default function App() {
         ) : tab === 'pump' ? (
           <PumpLaunchpad api={b} />
         ) : (
-          <MemeSuggestor api={b} />
+          <TrendingSuggestor api={b} />
         )}
 
         <ConfirmModal
