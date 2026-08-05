@@ -115,7 +115,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     try {
       let report = hasRedis() ? await loadReport() : null;
       if (!report || Date.now() - report.generatedAt > STALE_MS) {
-        console.log('[api] data stale or missing, triggering on-demand scrape...');
+        console.log('[api] data stale or missing, triggering scan...');
         const result = await doRefresh();
         report = result.report;
       }
@@ -124,7 +124,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           ok: true,
           report: null,
           source: 'intel',
-          message: 'No launch opportunities found. The engine is scanning the internet for viral narratives.',
+          message: 'No launch opportunities found. The engine is scanning for viral narratives.',
         });
         return;
       }

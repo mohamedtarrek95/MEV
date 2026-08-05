@@ -17,7 +17,7 @@ function readCache(): NarrativeReport | null {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const envelope: CacheEnvelope = JSON.parse(raw);
-    if (envelope.version !== 1) { localStorage.removeItem(CACHE_KEY); return null; }
+    if (envelope.version !== 2) { localStorage.removeItem(CACHE_KEY); return null; }
     if (Date.now() - envelope.timestamp > CACHE_TTL_MS) { localStorage.removeItem(CACHE_KEY); return null; }
     return envelope.report;
   } catch {
@@ -28,7 +28,7 @@ function readCache(): NarrativeReport | null {
 
 function writeCache(report: NarrativeReport) {
   try {
-    const envelope: CacheEnvelope = { version: 1, timestamp: Date.now(), report };
+    const envelope: CacheEnvelope = { version: 2, timestamp: Date.now(), report };
     localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
   } catch { /* ignore */ }
 }
@@ -64,7 +64,7 @@ export function getRecommendationLabel(rec: CompetitionData['recommendation']): 
   }
 }
 
-function getScoreColor(score: number): string {
+export function getScoreColor(score: number): string {
   if (score >= 80) return 'text-emerald-400';
   if (score >= 60) return 'text-green-400';
   if (score >= 40) return 'text-yellow-400';
@@ -72,7 +72,13 @@ function getScoreColor(score: number): string {
   return 'text-red-400';
 }
 
-export { getScoreColor };
+export function getScoreBg(score: number): string {
+  if (score >= 80) return 'bg-emerald-500';
+  if (score >= 60) return 'bg-green-500';
+  if (score >= 40) return 'bg-yellow-500';
+  if (score >= 20) return 'bg-orange-500';
+  return 'bg-red-500';
+}
 
 interface UseIntelResult {
   report: NarrativeReport | null;

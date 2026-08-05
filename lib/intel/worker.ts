@@ -9,27 +9,26 @@ const RETRY_DELAY_MS = 3000;
 
 async function fetchWithRetry(provider: { name: string; sourceId: string; fetch(): Promise<RawPost[]> }, attempt = 0): Promise<RawPost[]> {
   try {
-    const posts = await provider.fetch();
-    return posts;
+    return await provider.fetch();
   } catch (err) {
     if (attempt < MAX_RETRIES) {
-      console.warn(`[intel] ${provider.name} failed (attempt ${attempt + 1}), retrying in ${RETRY_DELAY_MS}ms...`);
+      console.warn(`[launch-engine] ${provider.name} failed (attempt ${attempt + 1}), retrying in ${RETRY_DELAY_MS}ms...`);
       await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       return fetchWithRetry(provider, attempt + 1);
     }
-    console.error(`[intel] ${provider.name} failed after ${MAX_RETRIES + 1} attempts:`, err instanceof Error ? err.message : err);
+    console.error(`[launch-engine] ${provider.name} failed after ${MAX_RETRIES + 1} attempts:`, err instanceof Error ? err.message : err);
     return [];
   }
 }
 
 export async function runScan(): Promise<NarrativeReport> {
   const providers = createAllProviders();
-  console.log(`[intel] scanning ${providers.length} providers...`);
+  console.log(`[launch-engine] scanning ${providers.length} meme sources...`);
 
   const results = await Promise.allSettled(
     providers.map(async (p) => {
       const posts = await fetchWithRetry(p);
-      console.log(`[intel] ${p.name}: ${posts.length} posts`);
+      console.log(`[launch-engine] ${p.name}: ${posts.length} posts`);
       return { source: p.sourceId, posts };
     }),
   );
@@ -43,10 +42,10 @@ export async function runScan(): Promise<NarrativeReport> {
     }
   }
 
-  console.log(`[intel] total posts collected: ${allPosts.length} from ${sourcesScanned.length} sources`);
+  console.log(`[launch-engine] total posts collected: ${allPosts.length} from ${sourcesScanned.length} sources`);
 
   const opportunities = analyzeNarratives(allPosts);
-  console.log(`[intel] analysis complete: ${opportunities.length} launch opportunities`);
+  console.log(`[launch-engine] analysis complete: ${opportunities.length} launch opportunities`);
 
   const report: NarrativeReport = {
     generatedAt: Date.now(),
@@ -56,11 +55,13 @@ export async function runScan(): Promise<NarrativeReport> {
     windowHours: 24,
     diagnostics: {
       collectedPosts: allPosts.length,
-      extractedEntities: 0,
-      mergedEntities: 0,
-      rejectedEntities: [],
-      acceptedEntities: opportunities.length,
-      top15Entities: opportunities.slice(0, 15).map((o) => o.canonicalEntity),
+      memePosts: 0,
+      culturalPosts: 0,
+      rejectedPosts: 0,
+      phrasesExtracted: 0,
+      narrativeClusters: 0,
+      passedFilter: opportunities.length,
+      topOpportunities: opportunities.length,
       pipelineFlow: [],
     },
   };
@@ -68,40 +69,40 @@ export async function runScan(): Promise<NarrativeReport> {
   if (hasRedis()) {
     await saveReport(report);
   } else {
-    console.log('[intel] no REDIS_URL set, skipping database save (local mode)');
+    console.log('[launch-engine] no REDIS_URL set, skipping database save (local mode)');
   }
 
   return report;
 }
 
 function shutdown(signal: string) {
-  console.log(`[intel] received ${signal}, shutting down...`);
+  console.log(`[launch-engine] received ${signal}, shutting down...`);
   void disconnect().then(() => process.exit(0));
 }
 
 export async function startWorker(): Promise<void> {
-  console.log(`[intel] worker starting, refresh every ${Math.round(REFRESH_MS / 60000)} min`);
-  console.log(`[intel] redis: ${hasRedis() ? 'connected' : 'not configured (local mode)'}`);
+  console.log(`[launch-engine] worker starting, refresh every ${Math.round(REFRESH_MS / 60000)} min`);
+  console.log(`[launch-engine] redis: ${hasRedis() ? 'connected' : 'not configured (local mode)'}`);
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
   await runScan().catch((err) => {
-    console.error('[intel] initial scan failed:', err);
+    console.error('[launch-engine] initial scan failed:', err);
   });
 
   setInterval(() => {
     void runScan().catch((err) => {
-      console.error('[intel] scan failed:', err);
+      console.error('[launch-engine] scan failed:', err);
     });
   }, REFRESH_MS);
 
-  console.log('[intel] worker running');
+  console.log('[launch-engine] worker running');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   startWorker().catch((err) => {
-    console.error('[intel] worker failed to start:', err);
+    console.error('[launch-engine] worker failed to start:', err);
     process.exit(1);
   });
 }

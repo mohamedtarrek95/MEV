@@ -74,7 +74,7 @@ async function fetchProvider(provider: ITrendProvider): Promise<{ posts: RawPost
       status.durationMs = now - start;
 
       console.log(
-        `[scrape] ✓ ${provider.name}: ${status.collectedPosts} collected, ${status.acceptedPosts} accepted, ${status.rejectedPosts} rejected (${status.durationMs}ms)`,
+        `[launch-engine] ✓ ${provider.name}: ${status.collectedPosts} collected, ${status.acceptedPosts} accepted (${status.durationMs}ms)`,
       );
 
       return { posts: valid, status };
@@ -82,7 +82,7 @@ async function fetchProvider(provider: ITrendProvider): Promise<{ posts: RawPost
       status.lastError = err instanceof Error ? err.message : String(err);
       status.httpStatus = null;
       console.error(
-        `[scrape] ✗ ${provider.name} attempt ${attempt + 1}: ${status.lastError}`,
+        `[launch-engine] ✗ ${provider.name} attempt ${attempt + 1}: ${status.lastError}`,
       );
 
       if (attempt < MAX_RETRIES) {
@@ -93,7 +93,7 @@ async function fetchProvider(provider: ITrendProvider): Promise<{ posts: RawPost
 
   status.durationMs = Date.now() - start;
   console.log(
-    `[scrape] ✗ ${provider.name}: FAILED after ${status.requests} requests — ${status.lastError}`,
+    `[launch-engine] ✗ ${provider.name}: FAILED after ${status.requests} requests — ${status.lastError}`,
   );
   return { posts: [], status };
 }
@@ -101,7 +101,7 @@ async function fetchProvider(provider: ITrendProvider): Promise<{ posts: RawPost
 export async function scrapeAll(): Promise<ScrapeResult> {
   const overallStart = Date.now();
   const providers = createAllProviders();
-  console.log(`[scrape] starting scan of ${providers.length} providers...`);
+  console.log(`[launch-engine] scanning ${providers.length} meme sources...`);
 
   const results = await Promise.allSettled(providers.map((p) => fetchProvider(p)));
 
@@ -132,24 +132,21 @@ export async function scrapeAll(): Promise<ScrapeResult> {
     windowHours: 24,
     diagnostics: {
       collectedPosts: allPosts.length,
-      extractedEntities: 0,
-      mergedEntities: 0,
-      rejectedEntities: [],
-      acceptedEntities: opportunities.length,
-      top15Entities: opportunities.slice(0, 15).map((o) => o.canonicalEntity),
+      memePosts: 0,
+      culturalPosts: 0,
+      rejectedPosts: 0,
+      phrasesExtracted: 0,
+      narrativeClusters: 0,
+      passedFilter: opportunities.length,
+      topOpportunities: opportunities.length,
       pipelineFlow: [],
     },
   };
 
   const durationMs = now - overallStart;
   console.log(
-    `[scrape] complete: ${allPosts.length} posts, ${opportunities.length} opportunities, ${durationMs}ms total`,
+    `[launch-engine] complete: ${allPosts.length} posts → ${opportunities.length} launch opportunities (${durationMs}ms)`,
   );
-  for (const s of providerStatuses) {
-    console.log(
-      `[scrape]   ${s.name}: requests=${s.requests} collected=${s.collectedPosts} accepted=${s.acceptedPosts} rejected=${s.rejectedPosts} http=${s.httpStatus ?? 'N/A'} duration=${s.durationMs}ms${s.lastError ? ` error="${s.lastError}"` : ''}`,
-    );
-  }
 
   return {
     posts: allPosts,

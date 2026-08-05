@@ -1,4 +1,4 @@
-export type ProviderCategory = 'social' | 'market';
+export type ProviderCategory = 'social';
 
 export interface RawPost {
   id: string;
@@ -23,59 +23,80 @@ export interface ITrendProvider {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// LAUNCH OPPORTUNITY TYPES
+// LAUNCH OPPORTUNITY ENGINE TYPES
 //
-// This project discovers pre-token viral narratives.
-// It answers: "What meme should I launch today?"
+// This engine discovers pre-token viral narratives.
+// Its only objective: "Find ideas that have high probability of
+// becoming successful meme tokens."
 // ══════════════════════════════════════════════════════════════════════
 
 export interface LaunchOpportunity {
   id: string;
-  narrative: string;
-  canonicalEntity: string;
-  aliases: string[];
 
-  // Core scores (0-100)
-  launchScore: number;
-  viralityScore: number;
-  memeStrength: number;
-  growthVelocity: number;
-  communityDiversity: number;
-  crossPlatformSpread: number;
-  originalityScore: number;
+  // ── The Idea ──
+  narrative: string;                  // "Italian Brainrot Shark"
+  suggestedName: string;              // "ItalianBrainrotShark"
+  suggestedTicker: string;            // "IBRK"
+  oneSentenceDescription: string;     // "Absurd Italian meme combining brainrot culture with shark imagery"
 
-  // Competition data
+  // ── Core Scores (0-100) ──
+  launchScore: number;                // Final composite score
+  viralityScore: number;              // How fast is this spreading?
+  narrativeStrength: number;          // How complete/well-formed is this narrative?
+  growthVelocity: number;             // Acceleration of discussion
+  communityDiversity: number;         // How many independent voices
+  crossPlatformSpread: number;        // How many platforms
+  originalityScore: number;           // How novel vs. saturated?
+  imagePotential: number;             // Can this become a mascot/sticker/profile pic?
+  brandability: number;               // Easy to remember, pronounce, ticker?
+  mascotPotential: number;            // Can this become a recognizable character?
+  tickerQuality: number;              // Short, memorable, unique ticker?
+  momentum: number;                   // Acceleration of discussion
+  launchProbability: number;          // Probability of successful token launch
+
+  // ── Competition ──
   competition: CompetitionData;
 
-  // Source data
+  // ── Evidence ──
   mentionCount: number;
   uniqueAuthors: number;
   sourcesFound: string[];
   sourceCount: number;
   socialPlatforms: string[];
-  marketPlatforms: string[];
 
-  // Temporal
+  // ── Temporal ──
   firstDetected: number;
   lastSeen: number;
-  momentum: number;
 
-  // Opportunity signals
-  imagePotential: number;
-  brandability: number;
-  mascotPotential: number;
-  tickerQuality: number;
-  launchProbability: number;
+  // ── Narrative Structure ──
+  summary: string;                    // One-sentence summary
+  coreCharacters: string[];           // Recurring entities
+  runningJoke: string;                // The main joke/punchline
+  repeatedCatchphrases: string[];     // Ways people describe this
+  relatedHashtags: string[];
+  whyThisIsBecomingViral: string;     // WHY it's spreading
 
-  // Explanation
-  reason: string;
-  whySelected: string;
+  // ── Content ──
+  topPostTitles: string[];
+  supportingPosts: SupportingPost[];
   evidence: string[];
   category: string;
 
-  // Top content
-  topPostTitles: string[];
-  topContributingPosts: string[];
+  // ── Growth ──
+  growthTimeline: GrowthBucket[];
+}
+
+export interface SupportingPost {
+  title: string;
+  source: string;
+  author: string;
+  engagement: number;
+  timestamp: number;
+}
+
+export interface GrowthBucket {
+  time: number;
+  count: number;
 }
 
 export interface CompetitionData {
@@ -100,21 +121,17 @@ export interface NarrativeReport {
 
 export interface PipelineDiagnostics {
   collectedPosts: number;
-  extractedEntities: number;
-  mergedEntities: number;
-  rejectedEntities: RejectedEntity[];
-  acceptedEntities: number;
-  top15Entities: string[];
+  memePosts: number;
+  culturalPosts: number;
+  rejectedPosts: number;
+  phrasesExtracted: number;
+  narrativeClusters: number;
+  passedFilter: number;
+  topOpportunities: number;
   pipelineFlow: string[];
 }
 
-export interface RejectedEntity {
-  entity: string;
-  reason: string;
-  postCount: number;
-}
-
-// Legacy alias for backwards compat
+// Legacy aliases
 export type MemeNarrative = LaunchOpportunity;
 export type IntelReport = NarrativeReport;
 export type NarrativeCluster = never;

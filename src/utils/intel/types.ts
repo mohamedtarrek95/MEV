@@ -9,19 +9,40 @@ export interface CompetitionData {
   recommendationReason: string;
 }
 
+export interface SupportingPost {
+  title: string;
+  source: string;
+  author: string;
+  engagement: number;
+  timestamp: number;
+}
+
+export interface GrowthBucket {
+  time: number;
+  count: number;
+}
+
 export interface LaunchOpportunity {
   id: string;
+
   narrative: string;
-  canonicalEntity: string;
-  aliases: string[];
+  suggestedName: string;
+  suggestedTicker: string;
+  oneSentenceDescription: string;
 
   launchScore: number;
   viralityScore: number;
-  memeStrength: number;
+  narrativeStrength: number;
   growthVelocity: number;
   communityDiversity: number;
   crossPlatformSpread: number;
   originalityScore: number;
+  imagePotential: number;
+  brandability: number;
+  mascotPotential: number;
+  tickerQuality: number;
+  momentum: number;
+  launchProbability: number;
 
   competition: CompetitionData;
 
@@ -30,34 +51,33 @@ export interface LaunchOpportunity {
   sourcesFound: string[];
   sourceCount: number;
   socialPlatforms: string[];
-  marketPlatforms: string[];
 
   firstDetected: number;
   lastSeen: number;
-  momentum: number;
 
-  imagePotential: number;
-  brandability: number;
-  mascotPotential: number;
-  tickerQuality: number;
-  launchProbability: number;
-
-  reason: string;
-  whySelected: string;
-  evidence: string[];
-  category: string;
+  summary: string;
+  coreCharacters: string[];
+  runningJoke: string;
+  repeatedCatchphrases: string[];
+  relatedHashtags: string[];
+  whyThisIsBecomingViral: string;
 
   topPostTitles: string[];
-  topContributingPosts: string[];
+  supportingPosts: SupportingPost[];
+  evidence: string[];
+  category: string;
+  growthTimeline: GrowthBucket[];
 }
 
 export interface PipelineDiagnostics {
   collectedPosts: number;
-  extractedEntities: number;
-  mergedEntities: number;
-  rejectedEntities: Array<{ entity: string; reason: string; postCount: number }>;
-  acceptedEntities: number;
-  top15Entities: string[];
+  memePosts: number;
+  culturalPosts: number;
+  rejectedPosts: number;
+  phrasesExtracted: number;
+  narrativeClusters: number;
+  passedFilter: number;
+  topOpportunities: number;
   pipelineFlow: string[];
 }
 
@@ -71,5 +91,4 @@ export interface NarrativeReport {
 }
 
 export interface IntelReport extends NarrativeReport {}
-
 export type MemeNarrative = LaunchOpportunity;

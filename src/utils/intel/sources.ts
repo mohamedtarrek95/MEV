@@ -1,8 +1,6 @@
 export const SOURCE_LABELS: Record<string, string> = {
   reddit: 'Reddit',
   bluesky: 'Bluesky',
-  hackerNews: 'Hacker News',
-  github: 'GitHub',
   mastodon: 'Mastodon',
   lemmy: 'Lemmy',
 };

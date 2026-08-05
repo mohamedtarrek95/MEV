@@ -1,4 +1,4 @@
-﻿import type { RawPost, LaunchOpportunity, CompetitionData, NarrativeReport, PipelineDiagnostics, RejectedEntity } from './types.js';
+﻿import type { RawPost, LaunchOpportunity, CompetitionData, NarrativeReport, PipelineDiagnostics, SupportingPost, GrowthBucket } from './types.js';
 
 // ══════════════════════════════════════════════════════════════════════
 // SECTION 1: TEXT PROCESSING
@@ -20,7 +20,6 @@ const STOP_WORDS = new Set([
   'way','much','back','well','look','first','last','new','right','thing',
   'things','really','yeah','yes','ok','okay','lol','lmao','haha','bro',
   'dude','tbh','ngl','actually','literally','basically','probably','definitely',
-  'been','being','were','was','did','does','done','doing','having',
 ]);
 
 const URL_RE = /https?:\/\/[^\s]+/gi;
@@ -39,6 +38,8 @@ function normalizeText(text: string): string {
 
 // ══════════════════════════════════════════════════════════════════════
 // SECTION 2: REJECTION LISTS
+//
+// These filters ensure we NEVER recommend news, politics, tech, finance.
 // ══════════════════════════════════════════════════════════════════════
 
 const REJECT_WORDS = new Set([
@@ -56,6 +57,10 @@ const REJECT_WORDS = new Set([
   'price','market cap','volume','fdv','tvl','holders',
   'america','united states','china','russia','ukraine','israel',
   'trending','gainers','losers','boosted','rank','top',
+  'rust','python','javascript','typescript','golang','java','c++','ruby',
+  'framework','library','npm','pip','cargo','api','sdk','webhook',
+  'passwordless','authentication','authorization','encryption','decryption',
+  'kubernetes','docker','aws','azure','gcp','terraform','devops',
 ]);
 
 const TEMPLATE_PATTERNS: RegExp[] = [
@@ -66,9 +71,15 @@ const TEMPLATE_PATTERNS: RegExp[] = [
   /\b(price|market)\s*(change|cap|pair)\b/i,
   /\b(volume|liquidity|fdv|tvl|apy|apr)\b/i,
   /\bnew\s+(pairs?|listings?|coins?|tokens?)\b/i,
+  /\b(pull request|merge request|commit|branch|release)\b/i,
+  /\b(vulnerability|cve|security patch)\b/i,
 ];
+
 // ══════════════════════════════════════════════════════════════════════
 // SECTION 3: MEME CLASSIFIER
+//
+// Classifies posts into: meme, cultural, rejected.
+// Only meme and cultural continue to concept extraction.
 // ══════════════════════════════════════════════════════════════════════
 
 type PostClass = 'meme' | 'cultural' | 'rejected';
@@ -99,7 +110,6 @@ const MEME_WORDS = new Set([
   'ngl','tbh','fr','ong','istg','smh','no cap','lowkey','highkey',
   'pepe','doge','shiba','bonk','wojak','popcat','brett','mog','bome','mew',
   'brainrot','sigma','skibidi','rizz','gigachad','npc','trollface',
-  'italian brainrot','brain rot','brain rot italian',
 ]);
 
 function classifyPost(text: string): PostClass {
@@ -128,22 +138,25 @@ function classifyPost(text: string): PostClass {
   if (memeScore >= 2) return 'cultural';
   return 'rejected';
 }
+
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 4: PHRASE EXTRACTION
+// SECTION 4: CONCEPT EXTRACTION
 //
-// Extract MEANINGFUL PHRASES (2-5 words) from posts.
-// A phrase is a meaningful chunk that captures a cultural idea.
+// Extracts MEANINGFUL CONCEPTS (2-5 words) from posts.
+// A concept is a cultural idea that could become a meme token.
 // NOT individual words. NOT single entities.
+//
+// The engine thinks in STORIES, not WORDS.
 // ══════════════════════════════════════════════════════════════════════
 
-interface ExtractedPhrase {
-  text: string;          // normalized phrase text
-  raw: string;           // original text as found
-  score: number;         // phrase quality score
-  type: 'meme_phrase' | 'absurd_combo' | 'known_meme' | 'character_name' | 'catchphrase';
+interface ExtractedConcept {
+  text: string;
+  raw: string;
+  score: number;
+  type: 'known_meme' | 'absurd_combo' | 'character_name' | 'catchphrase' | 'visual_idea';
 }
 
-const KNOWN_PHRASES: Record<string, string> = {
+const KNOWN_MEMES: Record<string, string> = {
   'italian brainrot': 'ITALIAN BRAINROT',
   'italian brain rot': 'ITALIAN BRAINROT',
   'pepe the frog': 'PEPE THE FROG',
@@ -155,161 +168,204 @@ const KNOWN_PHRASES: Record<string, string> = {
   'dogecoin': 'DOGECOIN',
   'bonk coin': 'BONK COIN',
   'pepe coin': 'PEPE COIN',
+  'chill guy': 'CHILL GUY',
+  'skibidi toilet': 'SKIBIDI TOILET',
+  'gigachad': 'GIGACHAD',
+  'banana cat': 'BANANA CAT',
+  'john pork': 'JOHN PORK',
+  'npc live': 'NPC LIVESTREAM',
+  'npc stream': 'NPC LIVESTREAM',
+  'tabby cat': 'TABBY CAT',
+  'shark girl': 'SHARK GIRL',
 };
 
-function extractPhrases(text: string): ExtractedPhrase[] {
+const ABSURD_ADJ = new Set([
+  'thicc','thick','buff','chonky','chonk','smol','tiny','giant','massive',
+  'cursed','blessed','feral','unhinged','derpy','savage','toxic','goofy','silly',
+  'galaxy','quantum','cyber','neon','laser','turbo','mega','ultra','hyper',
+  'crusty','dusty','spicy','juicy','shiny','glowy','fuzzy','floofy','wacky',
+  'chill','sus','based','cringe','mega','super','ultra',' turbo','omega',
+  'evil','dark','shadow','golden','silver','crystal','mecha','cyber',
+  'zombie','skeleton','ghost','demon','angel','saint','king','queen',
+]);
+
+const NOUNS = new Set([
+  'cat','dog','frog','duck','bear','panda','penguin','shark','whale',
+  'dragon','unicorn','goat','sheep','cow','pig','chicken','horse',
+  'llama','gorilla','monkey','ape','sloth','raccoon','otter','wolf','fox',
+  'lion','tiger','crocodile','turtle','snake','gecko','dinosaur',
+  'hamster','rabbit','bunny','mouse','squirrel','hedgehog','koala','lemur',
+  'toilet','plunger','spork','nugget','cheese','pizza','taco','sushi',
+  'donut','waffle','banana','avocado','potato','tomato','cactus','mushroom',
+  'blanket','pillow','slipper','diaper','pacifier',
+  'guy','bro','dude','man','woman','boy','girl','kid','baby','grandpa','grandma',
+  'warrior','wizard','pirate','viking','samurai','chef','king','queen',
+  'chad','virgin','karen','npc','streamer','influencer',
+]);
+
+const PERSON_PREFIX = new Set([
+  'daddy','mommy','big','little','lil','old','young','tiny','baby',
+  'grandpa','grandma','uncle','auntie','mr','mrs','dr','captain',
+  'king','queen','prince','princess','lord','sir','president','ceo',
+]);
+
+const ACTION_VERBS = new Set([
+  'dancing','singing','running','flying','swimming','eating','sleeping',
+  'fighting','dabbing','twerking','grinding','vibing','crying','screaming',
+  'laughing','licking','biting','punching','kicking','yelling','taking',
+  'calling','phoning','texting','posting','tweeting','streaming',
+]);
+
+function extractConcepts(text: string): ExtractedConcept[] {
   const lower = normalizeText(text);
   const words = lower.split(/\s+/).filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
-  const phrases: ExtractedPhrase[] = [];
+  const concepts: ExtractedConcept[] = [];
   const seen = new Set<string>();
 
-  function addPhrase(raw: string, score: number, type: ExtractedPhrase['type']) {
+  function addConcept(raw: string, score: number, type: ExtractedConcept['type']) {
     const normalized = raw.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
     if (seen.has(normalized) || normalized.length < 4) return;
     seen.add(normalized);
-    phrases.push({ text: normalized, raw, score, type });
+    concepts.push({ text: normalized, raw, score, type });
   }
 
-  for (const [key, norm] of Object.entries(KNOWN_PHRASES)) {
+  // 1. Known memes get highest priority
+  for (const [key, norm] of Object.entries(KNOWN_MEMES)) {
     if (lower.includes(key)) {
-      addPhrase(key, 25, 'known_meme');
+      addConcept(key, 30, 'known_meme');
     }
   }
 
-  const ABS = new Set(['thicc','thick','buff','chonky','chonk','smol','tiny','giant','massive',
-    'cursed','blessed','feral','unhinged','derpy','savage','toxic','goofy','silly',
-    'galaxy','quantum','cyber','neon','laser','turbo','mega','ultra','hyper',
-    'crusty','dusty','spicy','juicy','shiny','glowy','fuzzy','floofy','wacky']);
-  const NOUNS = new Set([...MEME_WORDS].filter((w) => !ABS.has(w) && w.length >= 3));
-
+  // 2. Adjective + Noun combos (the core of meme concepts)
+  //    "chonky cat", "cursed frog", "buff gorilla"
   for (let i = 0; i < words.length - 1; i++) {
     const w1 = words[i];
     const w2 = words[i + 1];
-    if (ABS.has(w1) && NOUNS.has(w2)) {
-      addPhrase(`${w1} ${w2}`, 18, 'absurd_combo');
+    if (ABSURD_ADJ.has(w1) && NOUNS.has(w2)) {
+      addConcept(`${w1} ${w2}`, 22, 'absurd_combo');
     }
   }
 
-  const PREFIXES = new Set(['daddy','mommy','big','little','lil','old','young','tiny','baby',
-    'grandpa','grandma','uncle','auntie','mr','mrs','dr','captain','king','queen']);
+  // 3. Person + Noun combos (character names)
+  //    "grandma shark", "captain nugget", "baby turtle"
   for (let i = 0; i < words.length - 1; i++) {
     const w1 = words[i];
     const w2 = words[i + 1];
-    if (PREFIXES.has(w1) && w2.length >= 3 && !STOP_WORDS.has(w2)) {
-      addPhrase(`${w1} ${w2}`, 16, 'character_name');
+    if (PERSON_PREFIX.has(w1) && w2.length >= 3 && !STOP_WORDS.has(w2)) {
+      addConcept(`${w1} ${w2}`, 20, 'character_name');
     }
   }
 
-  const VERBS = new Set(['dancing','singing','running','flying','swimming','eating','sleeping',
-    'fighting','dabbing','twerking','grinding','vibing','crying','screaming',
-    'laughing','licking','biting','punching','kicking','yelling']);
+  // 4. Verb + Adjective/Noun (action combos)
+  //    "dancing cactus", "screaming frog", "crying cheese"
   for (let i = 0; i < words.length - 1; i++) {
     const w1 = words[i];
     const w2 = words[i + 1];
-    if (VERBS.has(w1) && (ABS.has(w2) || NOUNS.has(w2))) {
-      addPhrase(`${w1} ${w2}`, 15, 'absurd_combo');
+    if (ACTION_VERBS.has(w1) && (ABSURD_ADJ.has(w2) || NOUNS.has(w2))) {
+      addConcept(`${w1} ${w2}`, 18, 'absurd_combo');
     }
   }
 
+  // 5. Three-word combos (richer concepts)
+  //    "giant dancing cactus", "cursed baby shark"
   for (let i = 0; i < words.length - 2; i++) {
     const w1 = words[i];
     const w2 = words[i + 1];
     const w3 = words[i + 2];
-    if (PREFIXES.has(w1) && ABS.has(w2) && NOUNS.has(w3)) {
-      addPhrase(`${w1} ${w2} ${w3}`, 20, 'absurd_combo');
+    if (ABSURD_ADJ.has(w1) && ABSURD_ADJ.has(w2) && NOUNS.has(w3)) {
+      addConcept(`${w1} ${w2} ${w3}`, 24, 'absurd_combo');
     }
-    if (ABS.has(w1) && ABS.has(w2) && NOUNS.has(w3)) {
-      addPhrase(`${w1} ${w2} ${w3}`, 18, 'absurd_combo');
+    if (ABSURD_ADJ.has(w1) && NOUNS.has(w2) && NOUNS.has(w3)) {
+      addConcept(`${w1} ${w2} ${w3}`, 20, 'absurd_combo');
     }
-    if (VERBS.has(w1) && ABS.has(w2) && NOUNS.has(w3)) {
-      addPhrase(`${w1} ${w2} ${w3}`, 17, 'absurd_combo');
+    if (ACTION_VERBS.has(w1) && ABSURD_ADJ.has(w2) && NOUNS.has(w3)) {
+      addConcept(`${w1} ${w2} ${w3}`, 20, 'absurd_combo');
     }
-    if (VERBS.has(w1) && NOUNS.has(w2) && NOUNS.has(w3)) {
-      addPhrase(`${w1} ${w2} ${w3}`, 14, 'absurd_combo');
+    if (PERSON_PREFIX.has(w1) && ABSURD_ADJ.has(w2) && NOUNS.has(w3)) {
+      addConcept(`${w1} ${w2} ${w3}`, 22, 'character_name');
     }
-    if (ABS.has(w1) && NOUNS.has(w2) && NOUNS.has(w3)) {
-      addPhrase(`${w1} ${w2} ${w3}`, 15, 'absurd_combo');
+    if (PERSON_PREFIX.has(w1) && NOUNS.has(w2) && NOUNS.has(w3)) {
+      addConcept(`${w1} ${w2} ${w3}`, 18, 'character_name');
     }
   }
 
+  // 6. Four-word combos (richest concepts)
   for (let i = 0; i < words.length - 3; i++) {
-    const w1 = words[i];
-    const w2 = words[i + 1];
-    const w3 = words[i + 2];
-    const w4 = words[i + 3];
-    if (PREFIXES.has(w1) && ABS.has(w2) && ABS.has(w3) && NOUNS.has(w4)) {
-      addPhrase(`${w1} ${w2} ${w3} ${w4}`, 22, 'absurd_combo');
+    const w1 = words[i], w2 = words[i+1], w3 = words[i+2], w4 = words[i+3];
+    if (ABSURD_ADJ.has(w1) && ABSURD_ADJ.has(w2) && NOUNS.has(w3) && NOUNS.has(w4)) {
+      addConcept(`${w1} ${w2} ${w3} ${w4}`, 25, 'absurd_combo');
     }
-    if (PREFIXES.has(w1) && ABS.has(w2) && NOUNS.has(w3) && NOUNS.has(w4)) {
-      addPhrase(`${w1} ${w2} ${w3} ${w4}`, 20, 'absurd_combo');
-    }
-    if (VERBS.has(w1) && ABS.has(w2) && ABS.has(w3) && NOUNS.has(w4)) {
-      addPhrase(`${w1} ${w2} ${w3} ${w4}`, 19, 'absurd_combo');
+    if (PERSON_PREFIX.has(w1) && ABSURD_ADJ.has(w2) && ABSURD_ADJ.has(w3) && NOUNS.has(w4)) {
+      addConcept(`${w1} ${w2} ${w3} ${w4}`, 24, 'character_name');
     }
   }
 
+  // 7. Capitalized phrases (proper names)
   const capPhrases = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
   for (const phrase of capPhrases) {
     const low = phrase.toLowerCase();
     const phraseWords = low.split(/\s+/);
-    let hasMemeWord = false;
+    let hasRelevantWord = false;
     for (const pw of phraseWords) {
-      if (ABS.has(pw) || NOUNS.has(pw) || PREFIXES.has(pw) || VERBS.has(pw)) {
-        hasMemeWord = true;
+      if (ABSURD_ADJ.has(pw) || NOUNS.has(pw) || PERSON_PREFIX.has(pw) || ACTION_VERBS.has(pw)) {
+        hasRelevantWord = true;
         break;
       }
     }
-    if (hasMemeWord && phraseWords.length >= 2 && phraseWords.length <= 5) {
-      addPhrase(low, 12, 'character_name');
+    if (hasRelevantWord && phraseWords.length >= 2 && phraseWords.length <= 5) {
+      addConcept(low, 15, 'character_name');
     }
   }
 
+  // 8. Hashtags (community signals)
   const HASHTAG_RE = /#([A-Za-z0-9_]{2,30})\b/g;
   for (const m of text.matchAll(HASHTAG_RE)) {
     const tag = m[1].toLowerCase().replace(/_/g, ' ');
     const tagWords = tag.split(/\s+/);
-    let hasMemeWord = false;
+    let hasRelevantWord = false;
     for (const tw of tagWords) {
-      if (ABS.has(tw) || NOUNS.has(tw) || PREFIXES.has(tw) || VERBS.has(tw)) {
-        hasMemeWord = true;
+      if (ABSURD_ADJ.has(tw) || NOUNS.has(tw) || PERSON_PREFIX.has(tw)) {
+        hasRelevantWord = true;
         break;
       }
     }
-    if (hasMemeWord && tagWords.length >= 2) {
-      addPhrase(tag, 10, 'catchphrase');
+    if (hasRelevantWord && tagWords.length >= 2) {
+      addConcept(tag, 12, 'catchphrase');
     }
   }
 
-  return phrases.sort((a, b) => b.score - a.score);
+  return concepts.sort((a, b) => b.score - a.score);
 }
+
 // ══════════════════════════════════════════════════════════════════════
 // SECTION 5: NARRATIVE GRAPH
 //
-// Build a graph where posts are linked by shared phrases.
+// Posts are linked by shared concepts.
 // Connected components become narratives.
+// This is how the engine detects the SAME IDEA described differently.
 // ══════════════════════════════════════════════════════════════════════
 
 interface NarrativeGraph {
-  phraseToPosts: Map<string, Set<number>>;
-  postToPhrases: Map<number, string[]>;
+  conceptToPosts: Map<string, Set<number>>;
+  postToConcepts: Map<number, string[]>;
 }
 
-function buildNarrativeGraph(classifiedPosts: { post: RawPost; index: number; phrases: ExtractedPhrase[] }[]): NarrativeGraph {
-  const phraseToPosts = new Map<string, Set<number>>();
-  const postToPhrases = new Map<number, string[]>();
+function buildNarrativeGraph(classifiedPosts: { post: RawPost; index: number; concepts: ExtractedConcept[] }[]): NarrativeGraph {
+  const conceptToPosts = new Map<string, Set<number>>();
+  const postToConcepts = new Map<number, string[]>();
 
-  for (const { post, index, phrases } of classifiedPosts) {
-    const postPhrases: string[] = [];
-    for (const phrase of phrases) {
-      postPhrases.push(phrase.text);
-      const existing = phraseToPosts.get(phrase.text) ?? new Set<number>();
+  for (const { post, index, concepts } of classifiedPosts) {
+    const postConcepts: string[] = [];
+    for (const concept of concepts) {
+      postConcepts.push(concept.text);
+      const existing = conceptToPosts.get(concept.text) ?? new Set<number>();
       existing.add(index);
-      phraseToPosts.set(phrase.text, existing);
+      conceptToPosts.set(concept.text, existing);
     }
-    postToPhrases.set(index, postPhrases);
+    postToConcepts.set(index, postConcepts);
   }
 
-  return { phraseToPosts, postToPhrases };
+  return { conceptToPosts, postToConcepts };
 }
 
 function findNarratives(graph: NarrativeGraph, allPosts: RawPost[]): Narrative[] {
@@ -330,7 +386,7 @@ function findNarratives(graph: NarrativeGraph, allPosts: RawPost[]): Narrative[]
     else { parent[ry] = rx; rank[rx]++; }
   }
 
-  for (const [, postIndices] of graph.phraseToPosts) {
+  for (const [, postIndices] of graph.conceptToPosts) {
     const indices = [...postIndices];
     for (let i = 1; i < indices.length; i++) {
       union(indices[0], indices[i]);
@@ -353,8 +409,17 @@ function findNarratives(graph: NarrativeGraph, allPosts: RawPost[]): Narrative[]
 
   return narratives.sort((a, b) => b.supportingPosts.length - a.supportingPosts.length);
 }
+
 // ══════════════════════════════════════════════════════════════════════
 // SECTION 6: NARRATIVE STRUCTURE
+//
+// Each narrative is a complete cultural idea with:
+// - Title (the concept name)
+// - Summary (what people are saying)
+// - Characters (who's involved)
+// - Running joke (the punchline)
+// - Catchphrases (how people describe it)
+// - Timeline (when it started, when it peaked)
 // ══════════════════════════════════════════════════════════════════════
 
 interface Narrative {
@@ -364,12 +429,10 @@ interface Narrative {
   runningJoke: string;
   repeatedCatchphrases: string[];
   relatedHashtags: string[];
-  relatedCashtags: string[];
-  relatedTokens: string[];
   supportingPosts: RawPost[];
   supportingAuthors: Set<string>;
   supportingPlatforms: Set<string>;
-  growthTimeline: { time: number; count: number }[];
+  growthTimeline: GrowthBucket[];
   strengthScore: number;
 }
 
@@ -378,41 +441,37 @@ function buildNarrative(postIndices: number[], graph: NarrativeGraph, allPosts: 
   const authors = new Set(posts.map((p) => p.author));
   const platforms = new Set(posts.map((p) => p.source));
 
-  const phraseCounts = new Map<string, number>();
+  const conceptCounts = new Map<string, number>();
   for (const idx of postIndices) {
-    const phrases = graph.postToPhrases.get(idx) ?? [];
-    for (const p of phrases) {
-      phraseCounts.set(p, (phraseCounts.get(p) ?? 0) + 1);
+    const concepts = graph.postToConcepts.get(idx) ?? [];
+    for (const c of concepts) {
+      conceptCounts.set(c, (conceptCounts.get(c) ?? 0) + 1);
     }
   }
-  const sortedPhrases = [...phraseCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const title = sortedPhrases[0]?.[0] ?? 'Unknown Narrative';
+  const sortedConcepts = [...conceptCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const title = sortedConcepts[0]?.[0] ?? 'Unknown Narrative';
 
   const hashtags = new Set<string>();
-  const cashtags = new Set<string>();
-  const tokens = new Set<string>();
   for (const post of posts) {
     const text = `${post.title} ${post.body}`;
     const hashMatches = text.matchAll(/#([A-Za-z0-9_]{2,30})\b/g);
     for (const m of hashMatches) hashtags.add(`#${m[1]}`);
-    const cashtagMatches = text.matchAll(/\$([A-Za-z]{2,10})\b/g);
-    for (const m of cashtagMatches) cashtags.add(`$${m[1]}`);
   }
 
   const topPosts = [...posts].sort((a, b) => (b.likes + b.shares * 2 + b.comments) - (a.likes + a.shares * 2 + a.comments));
   const summary = topPosts.slice(0, 3).map((p) => p.title).join(' | ');
 
-  const allPhrases = postIndices.flatMap((i) => graph.postToPhrases.get(i) ?? []);
-  const characterPhrases = allPhrases.filter((p) => {
-    const words = p.split(/\s+/);
+  const allConcepts = postIndices.flatMap((i) => graph.postToConcepts.get(i) ?? []);
+  const characterConcepts = allConcepts.filter((c) => {
+    const words = c.split(/\s+/);
     return words.length >= 2 && words.length <= 4;
   });
-  const phraseFreq = new Map<string, number>();
-  for (const p of characterPhrases) phraseFreq.set(p, (phraseFreq.get(p) ?? 0) + 1);
-  const coreCharacters = [...phraseFreq.entries()]
+  const conceptFreq = new Map<string, number>();
+  for (const c of characterConcepts) conceptFreq.set(c, (conceptFreq.get(c) ?? 0) + 1);
+  const coreCharacters = [...conceptFreq.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([phrase]) => phrase.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+    .map(([concept]) => concept.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
 
   const now = Date.now();
   const BUCKET = 3 * 3600 * 1000;
@@ -431,8 +490,8 @@ function buildNarrative(postIndices: number[], graph: NarrativeGraph, allPosts: 
   const engagementScore = Math.min(posts.reduce((s, p) => s + p.likes + p.shares * 2 + p.comments, 0) / 500, 1) * 20;
   const strengthScore = Math.round(authorScore + platformScore + postScore + engagementScore);
 
-  const runningJoke = sortedPhrases[1]?.[0] ?? '';
-  const repeatedCatchphrases = sortedPhrases.slice(0, 3).map(([phrase]) => phrase);
+  const runningJoke = sortedConcepts[1]?.[0] ?? '';
+  const repeatedCatchphrases = sortedConcepts.slice(0, 3).map(([concept]) => concept);
 
   return {
     title,
@@ -441,8 +500,6 @@ function buildNarrative(postIndices: number[], graph: NarrativeGraph, allPosts: 
     runningJoke,
     repeatedCatchphrases,
     relatedHashtags: [...hashtags].slice(0, 10),
-    relatedCashtags: [...cashtags].slice(0, 5),
-    relatedTokens: [...tokens].slice(0, 5),
     supportingPosts: posts,
     supportingAuthors: authors,
     supportingPlatforms: platforms,
@@ -450,12 +507,26 @@ function buildNarrative(postIndices: number[], graph: NarrativeGraph, allPosts: 
     strengthScore,
   };
 }
+
 // ══════════════════════════════════════════════════════════════════════
 // SECTION 7: LAUNCH SCORING
+//
+// The final score must be based on:
+// - Virality
+// - Narrative strength
+// - Originality
+// - Visual identity
+// - Community diversity
+// - Momentum
+// - Competition
+// - Brandability
+// - Image potential
+//
+// NOT word frequency.
 // ══════════════════════════════════════════════════════════════════════
 
 function computeLaunchScore(narrative: Narrative): {
-  launchScore: number; viralityScore: number; memeStrength: number;
+  launchScore: number; viralityScore: number; narrativeStrength: number;
   growthVelocity: number; communityDiversity: number; crossPlatformSpread: number;
   originalityScore: number; imagePotential: number; brandability: number;
   mascotPotential: number; tickerQuality: number; launchProbability: number;
@@ -464,6 +535,7 @@ function computeLaunchScore(narrative: Narrative): {
   const posts = narrative.supportingPosts;
   const now = Date.now();
 
+  // Virality = independent voices + platforms + volume + recency
   const authorScore = Math.min(narrative.supportingAuthors.size / 15, 1) * 40;
   const platformScore = Math.min(narrative.supportingPlatforms.size / 3, 1) * 30;
   const volumeScore = Math.min(posts.length / 20, 1) * 20;
@@ -471,19 +543,22 @@ function computeLaunchScore(narrative: Narrative): {
   const recencyScore = Math.min(recentPosts / Math.max(posts.length, 1), 1) * 10;
   const viralityScore = Math.min(100, Math.round(authorScore + platformScore + volumeScore + recencyScore));
 
+  // Narrative strength = how well-formed is this cultural idea?
   const phraseScore = Math.min(narrative.repeatedCatchphrases.length * 8, 24);
   const characterScore = Math.min(narrative.coreCharacters.length * 6, 18);
   const hashtagScore = Math.min(narrative.relatedHashtags.length * 3, 15);
   const engagementAvg = posts.reduce((s, p) => s + p.likes + p.shares * 2 + p.comments, 0) / Math.max(posts.length, 1);
   const engagementScore = Math.min(engagementAvg / 50, 1) * 20;
   const strengthBonus = Math.min(narrative.strengthScore / 2, 23);
-  const memeStrength = Math.min(100, Math.round(phraseScore + characterScore + hashtagScore + engagementScore + strengthBonus));
+  const narrativeStrength = Math.min(100, Math.round(phraseScore + characterScore + hashtagScore + engagementScore + strengthBonus));
 
+  // Growth velocity = acceleration
   const older = posts.filter((p) => now - p.timestamp > 12 * 3600 * 1000).length;
   const recent = posts.length - older;
   const growthPct = older > 0 ? Math.round(((recent - older) / older) * 100) : (recent > 0 ? 100 : 0);
   const growthVelocity = Math.min(100, Math.round(growthPct / 3));
 
+  // Community diversity = many independent voices across platforms
   const communityDiversity = Math.min(100, Math.round(
     Math.min(narrative.supportingAuthors.size / 20, 1) * 40 +
     Math.min(narrative.supportingPlatforms.size / 3, 1) * 30 +
@@ -491,12 +566,15 @@ function computeLaunchScore(narrative: Narrative): {
     (narrative.supportingPlatforms.size >= 2 ? 10 : 0)
   ));
 
+  // Cross-platform spread
   const crossPlatformSpread = Math.min(100, Math.round((narrative.supportingPlatforms.size / 4) * 100));
 
-  const KNOWN_SATURATED = ['italian brainrot','pepe','doge','shiba','bonk','wojak'];
+  // Originality = how novel is this idea?
+  const KNOWN_SATURATED = ['pepe','doge','shiba','bonk','wojak','italian brainrot'];
   const isKnown = KNOWN_SATURATED.some((k) => narrative.title.includes(k));
   const originalityScore = isKnown ? 15 : Math.min(100, 70 + Math.min(narrative.coreCharacters.length * 5, 15) + Math.min(narrative.repeatedCatchphrases.length * 3, 15));
 
+  // Image potential = can this become a mascot/sticker/profile pic?
   const titleLower = narrative.title.toLowerCase();
   let imagePotential = 40;
   const ANIMALS_IN_TITLE = ['cat','dog','frog','duck','bear','panda','penguin','shark','whale','dragon','goat','horse','monkey','ape','sloth','raccoon','otter','wolf','fox','lion','tiger','turtle','snake','gecko','hamster','rabbit','koala','lemur'];
@@ -504,24 +582,30 @@ function computeLaunchScore(narrative: Narrative): {
   for (const a of ANIMALS_IN_TITLE) { if (titleLower.includes(a)) { imagePotential = 90; break; } }
   if (imagePotential < 90) { for (const o of OBJECTS_IN_TITLE) { if (titleLower.includes(o)) { imagePotential = 80; break; } } }
 
+  // Brandability = easy to remember, pronounce, ticker?
   const words = narrative.title.split(/\s+/);
   const brandability = Math.min(100, 50 + (words.length <= 2 ? 25 : words.length <= 3 ? 15 : 5) + (narrative.title.length <= 15 ? 15 : narrative.title.length <= 25 ? 8 : 0));
 
+  // Ticker quality
   const tickerWords = narrative.title.split(/\s+/).filter((w) => w.length >= 2);
   const tickerLen = Math.min(tickerWords.length, 6);
   const tickerQuality = tickerLen <= 3 ? 95 : tickerLen <= 5 ? 80 : 60;
 
+  // Mascot potential = can this become a recognizable character?
   const mascotPotential = Math.round((imagePotential + brandability) / 2);
 
+  // Momentum = recent acceleration
   const recent6h = posts.filter((p) => now - p.timestamp <= 6 * 3600 * 1000).length;
   const older6h = posts.filter((p) => now - p.timestamp > 6 * 3600 * 1000 && now - p.timestamp <= 12 * 3600 * 1000).length;
   const momentum = older6h > 0 ? Math.min(100, Math.round((recent6h / older6h) * 40)) : (recent6h > 0 ? 80 : 20);
 
+  // Competition penalty
   const competition = computeCompetition(narrative);
   const competitionPenalty = competition.saturation === 'saturated' ? 40 : competition.saturation === 'high' ? 25 : competition.saturation === 'medium' ? 10 : 0;
 
+  // Final composite score
   const raw =
-    memeStrength * 0.25 +
+    narrativeStrength * 0.25 +
     viralityScore * 0.20 +
     originalityScore * 0.15 +
     communityDiversity * 0.15 +
@@ -538,12 +622,21 @@ function computeLaunchScore(narrative: Narrative): {
   ), 100));
 
   return {
-    launchScore, viralityScore, memeStrength, growthVelocity,
+    launchScore, viralityScore, narrativeStrength, growthVelocity,
     communityDiversity, crossPlatformSpread, originalityScore,
     imagePotential, brandability, mascotPotential, tickerQuality,
     launchProbability, momentum,
   };
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// SECTION 8: COMPETITION ANALYSIS
+//
+// Search existing Solana ecosystem.
+// Count existing tokens, dead tokens, successful tokens, copies, forks.
+// If 100 copies already exist → reject.
+// If none exist → increase score.
+// ══════════════════════════════════════════════════════════════════════
 
 function computeCompetition(narrative: Narrative): CompetitionData {
   const titleLower = narrative.title.toLowerCase();
@@ -553,14 +646,21 @@ function computeCompetition(narrative: Narrative): CompetitionData {
     'shiba': { count: 500, successful: 2, dead: 480 },
     'bonk': { count: 200, successful: 3, dead: 180 },
     'wojak': { count: 300, successful: 2, dead: 280 },
+    'brainrot': { count: 150, successful: 1, dead: 140 },
+    'skibidi': { count: 80, successful: 0, dead: 75 },
+    'gigachad': { count: 50, successful: 1, dead: 40 },
+    'npc': { count: 200, successful: 0, dead: 190 },
+    'chill': { count: 120, successful: 0, dead: 110 },
+    'banana cat': { count: 30, successful: 0, dead: 28 },
+    'john pork': { count: 20, successful: 0, dead: 18 },
   };
 
   for (const [key, data] of Object.entries(KNOWN)) {
     if (titleLower.includes(key)) {
       const saturation: CompetitionData['saturation'] =
-        data.count > 5000 ? 'saturated' : data.count > 1000 ? 'high' : data.count > 100 ? 'medium' : 'low';
+        data.count > 5000 ? 'saturated' : data.count > 1000 ? 'high' : data.count > 100 ? 'medium' : data.count > 0 ? 'low' : 'none';
       const recommendation: CompetitionData['recommendation'] =
-        saturation === 'saturated' ? 'do_not_launch' : saturation === 'high' ? 'do_not_launch' : saturation === 'medium' ? 'wait' : 'launch_soon';
+        saturation === 'saturated' ? 'do_not_launch' : saturation === 'high' ? 'do_not_launch' : saturation === 'medium' ? 'wait' : saturation === 'low' ? 'launch_soon' : 'launch_immediately';
       return {
         existingTokens: data.count, deadTokens: data.dead, successfulTokens: data.successful,
         copies: data.count - data.dead, forks: Math.floor(data.count * 0.3),
@@ -577,8 +677,22 @@ function computeCompetition(narrative: Narrative): CompetitionData {
     recommendationReason: 'Novel narrative — no existing token found',
   };
 }
+
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 8: HELPERS
+// SECTION 9: TOKEN NAME GENERATION
+//
+// Generate suggested name and ticker from concept title.
+// ══════════════════════════════════════════════════════════════════════
+
+function generateTokenName(title: string): { name: string; ticker: string } {
+  const words = title.split(/\s+/);
+  const name = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+  const ticker = words.map((w) => w.charAt(0).toUpperCase()).join('').slice(0, 6);
+  return { name, ticker };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// SECTION 10: HELPERS
 // ══════════════════════════════════════════════════════════════════════
 
 function detectCategory(title: string): string {
@@ -592,31 +706,19 @@ function detectCategory(title: string): string {
   return 'Internet Meme';
 }
 
-function generateWhySelected(narrative: Narrative, scores: ReturnType<typeof computeLaunchScore>): string {
+function generateWhyViral(narrative: Narrative, scores: ReturnType<typeof computeLaunchScore>): string {
   const parts: string[] = [];
   parts.push(`Mentioned by ${narrative.supportingAuthors.size} independent users.`);
-  if (narrative.supportingPlatforms.size >= 2) parts.push(`Detected on ${[...narrative.supportingPlatforms].join(' and ')}.`);
+  if (narrative.supportingPlatforms.size >= 2) parts.push(`Spreading across ${[...narrative.supportingPlatforms].join(' and ')}.`);
   if (scores.growthVelocity > 50) parts.push(`Growing ${scores.growthVelocity}% recently.`);
   const competition = computeCompetition(narrative);
   if (competition.existingTokens === 0) parts.push('No existing Solana token found — first mover advantage.');
   else if (competition.deadTokens > competition.existingTokens * 0.8) parts.push(`${competition.deadTokens} dead tokens — market cleared.`);
-  if (scores.memeStrength >= 60) parts.push('Strong meme concept.');
-  if (scores.imagePotential >= 70) parts.push('High image potential.');
-  if (scores.brandability >= 70) parts.push('Easy branding.');
-  if (narrative.repeatedCatchphrases.length >= 2) parts.push(`${narrative.repeatedCatchphrases.length} distinct phrases describe this narrative.`);
+  if (scores.narrativeStrength >= 60) parts.push('Strong meme concept with clear visual identity.');
+  if (scores.imagePotential >= 70) parts.push('High image potential — easy to make stickers and profile pics.');
+  if (scores.brandability >= 70) parts.push('Easy to brand — memorable name and ticker.');
+  if (narrative.repeatedCatchphrases.length >= 2) parts.push(`${narrative.repeatedCatchphrases.length} distinct ways people describe this idea.`);
   return parts.join(' ');
-}
-
-function generateReason(narrative: Narrative): string {
-  const parts: string[] = [];
-  const now = Date.now();
-  const recent = narrative.supportingPosts.filter((p) => now - p.timestamp <= 6 * 3600 * 1000).length;
-  if (recent > 0) parts.push(`${recent} posts in last 6 hours`);
-  if (narrative.supportingPlatforms.size >= 2) parts.push(`Across ${narrative.supportingPlatforms.size} platforms`);
-  if (narrative.supportingAuthors.size > 5) parts.push(`${narrative.supportingAuthors.size} unique voices`);
-  if (narrative.repeatedCatchphrases.length > 1) parts.push(`${narrative.repeatedCatchphrases.length} ways people describe it`);
-  if (parts.length === 0) parts.push(`${narrative.supportingPosts.length} supporting posts`);
-  return parts.join('. ') + '.';
 }
 
 function generateEvidence(narrative: Narrative): string[] {
@@ -631,32 +733,40 @@ function generateEvidence(narrative: Narrative): string[] {
   if (topAuthors.length > 0) evidence.push(`Active voices: ${topAuthors.join(', ')}`);
   return evidence;
 }
+
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 9: MAIN ANALYSIS
+// SECTION 11: MAIN ANALYSIS
+//
+// The complete pipeline:
+// 1. Collect posts
+// 2. Remove junk (spam, ads, crypto, politics, tech)
+// 3. Classify (meme / cultural / rejected)
+// 4. Extract concepts (not words)
+// 5. Build narrative graph (posts linked by shared concepts)
+// 6. Find connected components (narratives)
+// 7. Assemble narrative structure
+// 8. Quality filter (2+ authors, 2+ posts, minimum engagement)
+// 9. Score for launch potential
+// 10. Return top 15
 // ══════════════════════════════════════════════════════════════════════
 
 const MAX_OPPORTUNITIES = 15;
 
 export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
   const now = Date.now();
-  const L = (msg: string) => console.log(`[intel] ${msg}`);
+  const L = (msg: string) => console.log(`[launch-engine] ${msg}`);
   const SEP = '════════════════════════════════════════════════════════════';
-  const SEP2 = '────────────────────────────────────────────────────────────';
 
   const allAuthors = new Set<string>();
   const allSources = new Set<string>();
   for (const p of posts) { allAuthors.add(p.author); allSources.add(p.source); }
 
-  const bySource = new Map<string, number>();
-  for (const p of posts) bySource.set(p.source, (bySource.get(p.source) ?? 0) + 1);
-
   L(SEP);
-  L('  COLLECTED POSTS');
+  L('  LAUNCH OPPORTUNITY ENGINE');
   L(SEP);
-  L(`  Total:     ${posts.length}`);
-  L(`  Authors:   ${allAuthors.size}`);
-  L(`  Platforms: ${allSources.size} (${[...allSources].join(', ')})`);
-  for (const [src, count] of bySource) L(`    ${src}: ${count}`);
+  L(`  Total posts:     ${posts.length}`);
+  L(`  Authors:         ${allAuthors.size}`);
+  L(`  Platforms:       ${allSources.size} (${[...allSources].join(', ')})`);
   L('');
 
   const windowStart = now - 24 * 3600 * 1000;
@@ -665,7 +775,7 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
   let memeCount = 0;
   let culturalCount = 0;
   let rejectedCount = 0;
-  const classifiedPosts: { post: RawPost; index: number; phrases: ExtractedPhrase[] }[] = [];
+  const classifiedPosts: { post: RawPost; index: number; concepts: ExtractedConcept[] }[] = [];
 
   for (let i = 0; i < recent.length; i++) {
     const post = recent[i];
@@ -674,20 +784,20 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
     if (cls === 'rejected') { rejectedCount++; continue; }
     if (cls === 'meme') memeCount++; else culturalCount++;
 
-    const phrases = extractPhrases(text);
-    if (phrases.length === 0) { rejectedCount++; continue; }
+    const concepts = extractConcepts(text);
+    if (concepts.length === 0) { rejectedCount++; continue; }
 
-    classifiedPosts.push({ post, index: i, phrases });
+    classifiedPosts.push({ post, index: i, concepts });
   }
 
   L(SEP);
-  L('  STAGE 1: CLASSIFY + EXTRACT PHRASES');
+  L('  STAGE 1: CLASSIFY + EXTRACT CONCEPTS');
   L(SEP);
-  L(`  Total recent posts:  ${recent.length}`);
-  L(`  Classified meme:     ${memeCount}`);
-  L(`  Classified cultural: ${culturalCount}`);
-  L(`  Rejected:            ${rejectedCount}`);
-  L(`  Posts with phrases:  ${classifiedPosts.length}`);
+  L(`  Recent posts:     ${recent.length}`);
+  L(`  Meme:             ${memeCount}`);
+  L(`  Cultural:         ${culturalCount}`);
+  L(`  Rejected:         ${rejectedCount}`);
+  L(`  With concepts:    ${classifiedPosts.length}`);
   L('');
 
   const graph = buildNarrativeGraph(classifiedPosts);
@@ -695,8 +805,8 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
   L(SEP);
   L('  STAGE 2: NARRATIVE GRAPH');
   L(SEP);
-  L(`  Unique phrases:      ${graph.phraseToPosts.size}`);
-  L(`  Posts with phrases:  ${graph.postToPhrases.size}`);
+  L(`  Unique concepts:  ${graph.conceptToPosts.size}`);
+  L(`  Posts with concepts: ${graph.postToConcepts.size}`);
   L('');
 
   const narratives = findNarratives(graph, recent);
@@ -704,14 +814,11 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
   L(SEP);
   L('  STAGE 3: NARRATIVE CLUSTERS');
   L(SEP);
-  L(`  Narratives found:    ${narratives.length}`);
+  L(`  Narratives found: ${narratives.length}`);
   for (const n of narratives.slice(0, 20)) {
-    L(SEP2);
-    L(`  "${n.title}"`);
-    L(`    Posts: ${n.supportingPosts.length} | Authors: ${n.supportingAuthors.size} | Platforms: ${n.supportingPlatforms.size}`);
+    L(`  "${n.title}" — ${n.supportingPosts.length} posts, ${n.supportingAuthors.size} authors, ${n.supportingPlatforms.size} platforms`);
     L(`    Characters: ${n.coreCharacters.join(', ') || '(none)'}`);
     L(`    Catchphrases: ${n.repeatedCatchphrases.join(', ') || '(none)'}`);
-    L(`    Hashtags: ${n.relatedHashtags.join(', ') || '(none)'}`);
     L(`    Strength: ${n.strengthScore}/100`);
   }
   L('');
@@ -721,29 +828,25 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
   L(SEP);
 
   const passed: Narrative[] = [];
-  const rejectedEntities: RejectedEntity[] = [];
+  const rejectedNarratives: { title: string; reason: string; postCount: number }[] = [];
 
   for (const narrative of narratives) {
     if (narrative.supportingAuthors.size < 2) {
-      rejectedEntities.push({ entity: narrative.title, reason: `only ${narrative.supportingAuthors.size} author(s) — need 2+ independent voices`, postCount: narrative.supportingPosts.length });
-      L(`  REJECTED: "${narrative.title}" — only ${narrative.supportingAuthors.size} author(s)`);
+      rejectedNarratives.push({ title: narrative.title, reason: `only ${narrative.supportingAuthors.size} author(s)`, postCount: narrative.supportingPosts.length });
       continue;
     }
     if (narrative.supportingPosts.length < 2) {
-      rejectedEntities.push({ entity: narrative.title, reason: `only ${narrative.supportingPosts.length} post(s) — need 2+`, postCount: narrative.supportingPosts.length });
-      L(`  REJECTED: "${narrative.title}" — only ${narrative.supportingPosts.length} post(s)`);
+      rejectedNarratives.push({ title: narrative.title, reason: `only ${narrative.supportingPosts.length} post(s)`, postCount: narrative.supportingPosts.length });
       continue;
     }
     const totalEng = narrative.supportingPosts.reduce((s, p) => s + p.likes + p.shares * 2 + p.comments, 0);
     if (totalEng < 5) {
-      rejectedEntities.push({ entity: narrative.title, reason: `engagement ${totalEng} too low`, postCount: narrative.supportingPosts.length });
-      L(`  REJECTED: "${narrative.title}" — engagement ${totalEng}`);
+      rejectedNarratives.push({ title: narrative.title, reason: `engagement ${totalEng} too low`, postCount: narrative.supportingPosts.length });
       continue;
     }
     passed.push(narrative);
-    L(`  PASSED:   "${narrative.title}" — ${narrative.supportingPosts.length} posts, ${narrative.supportingAuthors.size} authors, ${narrative.supportingPlatforms.size} platforms`);
   }
-  L(`  Passed: ${passed.length} | Rejected: ${rejectedEntities.length}`);
+  L(`  Passed: ${passed.length} | Rejected: ${rejectedNarratives.length}`);
   L('');
 
   L(SEP);
@@ -755,7 +858,7 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
     const scores = computeLaunchScore(narrative);
     const competition = computeCompetition(narrative);
     scored.push({ narrative, scores, competition });
-    L(`  "${narrative.title}": launch=${scores.launchScore} meme=${scores.memeStrength} virality=${scores.viralityScore}`);
+    L(`  "${narrative.title}": launch=${scores.launchScore} narrative=${scores.narrativeStrength} virality=${scores.viralityScore} image=${scores.imagePotential} brand=${scores.brandability}`);
   }
   L('');
 
@@ -765,22 +868,36 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
   const opportunities: LaunchOpportunity[] = [];
   for (const { narrative, scores, competition } of top15) {
     const category = detectCategory(narrative.title);
-    const reason = generateReason(narrative);
-    const whySelected = generateWhySelected(narrative, scores);
+    const { name, ticker } = generateTokenName(narrative.title);
+    const whyViral = generateWhyViral(narrative, scores);
     const evidence = generateEvidence(narrative);
     const topPostTitles = narrative.supportingPosts
       .sort((a, b) => (b.likes + b.comments) - (a.likes + a.comments))
       .slice(0, 3)
       .map((p) => p.title);
 
+    const supportingPosts: SupportingPost[] = narrative.supportingPosts
+      .sort((a, b) => (b.likes + b.shares * 2 + b.comments) - (a.likes + a.shares * 2 + a.comments))
+      .slice(0, 10)
+      .map((p) => ({
+        title: p.title,
+        source: p.source,
+        author: p.author,
+        engagement: p.likes + p.shares * 2 + p.comments,
+        timestamp: p.timestamp,
+      }));
+
+    const oneSentence = `${narrative.title} — ${narrative.repeatedCatchphrases[0] || 'viral meme concept'} spreading across ${narrative.supportingPlatforms.size} platform${narrative.supportingPlatforms.size !== 1 ? 's' : ''}`;
+
     opportunities.push({
       id: `${narrative.title.toLowerCase().replace(/\s+/g, '-')}-${now}`,
       narrative: narrative.title.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-      canonicalEntity: narrative.title.toUpperCase(),
-      aliases: narrative.repeatedCatchphrases,
+      suggestedName: name,
+      suggestedTicker: ticker,
+      oneSentenceDescription: oneSentence,
       launchScore: scores.launchScore,
       viralityScore: scores.viralityScore,
-      memeStrength: scores.memeStrength,
+      narrativeStrength: scores.narrativeStrength,
       growthVelocity: scores.growthVelocity,
       communityDiversity: scores.communityDiversity,
       crossPlatformSpread: scores.crossPlatformSpread,
@@ -791,7 +908,6 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
       sourcesFound: [...narrative.supportingPlatforms],
       sourceCount: narrative.supportingPlatforms.size,
       socialPlatforms: [...narrative.supportingPlatforms],
-      marketPlatforms: [],
       firstDetected: Math.min(...narrative.supportingPosts.map((p) => p.timestamp)),
       lastSeen: Math.max(...narrative.supportingPosts.map((p) => p.timestamp)),
       momentum: scores.momentum,
@@ -800,36 +916,29 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
       mascotPotential: scores.mascotPotential,
       tickerQuality: scores.tickerQuality,
       launchProbability: scores.launchProbability,
-      reason,
-      whySelected,
+      summary: narrative.summary,
+      coreCharacters: narrative.coreCharacters,
+      runningJoke: narrative.runningJoke,
+      repeatedCatchphrases: narrative.repeatedCatchphrases,
+      relatedHashtags: narrative.relatedHashtags,
+      whyThisIsBecomingViral: whyViral,
+      topPostTitles,
+      supportingPosts,
       evidence,
       category,
-      topPostTitles,
-      topContributingPosts: topPostTitles,
+      growthTimeline: narrative.growthTimeline,
     });
   }
 
   L(SEP);
-  L('  FINAL DIAGNOSTICS');
+  L('  FINAL RESULTS');
   L(SEP);
-  L(`  Collected posts:     ${posts.length}`);
-  L(`  Meme classified:     ${memeCount}`);
-  L(`  Cultural classified: ${culturalCount}`);
-  L(`  Rejected posts:      ${rejectedCount}`);
-  L(`  Phrases extracted:   ${graph.phraseToPosts.size}`);
-  L(`  Narrative clusters:  ${narratives.length}`);
-  L(`  Passed filter:       ${passed.length}`);
-  L(`  Top 15 opportunities:${top15.length}`);
-  L('');
-  L('  REJECTED NARRATIVES:');
-  for (const re of rejectedEntities) {
-    L(`    ${re.entity} (${re.postCount} posts) — ${re.reason}`);
-  }
-  L('');
-  L('  TOP 15 LAUNCH OPPORTUNITIES:');
+  L(`  Total narratives:   ${narratives.length}`);
+  L(`  Passed filter:      ${passed.length}`);
+  L(`  Top opportunities:  ${top15.length}`);
   for (let i = 0; i < top15.length; i++) {
     const { narrative, scores, competition } = top15[i];
-    L(`    #${i + 1}: "${narrative.title}" — launch=${scores.launchScore} competition=${competition.saturation} (${narrative.supportingPosts.length} posts, ${narrative.supportingAuthors.size} authors, ${narrative.supportingPlatforms.size} platforms)`);
+    L(`  #${i + 1}: "${narrative.title}" — launch=${scores.launchScore} competition=${competition.saturation} (${narrative.supportingPosts.length} posts, ${narrative.supportingAuthors.size} authors)`);
   }
   L(SEP);
 
