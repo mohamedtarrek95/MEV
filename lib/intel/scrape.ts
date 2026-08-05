@@ -127,20 +127,18 @@ export async function scrapeAll(): Promise<ScrapeResult> {
   const report: ConceptReport = {
     generatedAt: now,
     concepts,
-    narrativesDetected: [],
+    catalystsDetected: [],
     postsProcessed: allPosts.length,
     sourcesScanned: providerStatuses.filter((s) => s.acceptedPosts > 0).map((s) => s.sourceId),
     windowHours: 24,
     diagnostics: {
       collectedPosts: allPosts.length,
       cryptoPosts: 0,
-      memePosts: 0,
-      newsPosts: 0,
-      rejectedPosts: 0,
-      narrativesDetected: 0,
+      catalystsDetected: 0,
+      reactionsExtracted: 0,
       conceptsGenerated: 0,
-      conceptsFiltered: concepts.length,
-      topConcepts: concepts.length,
+      conceptsRejected: 0,
+      highConviction: concepts.length,
     },
   };
 

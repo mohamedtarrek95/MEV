@@ -57,9 +57,8 @@ export async function saveReport(report: ConceptReport): Promise<void> {
       narrative: concept.narrative,
       coreJoke: concept.coreJoke,
       coreEmotion: concept.coreEmotion,
-      targetAudience: concept.targetAudience,
       mascot: concept.mascot,
-      estimatedChance: concept.estimatedChance,
+      cryptoCatalyst: concept.cryptoCatalyst,
     });
     pipeline.zAdd(CONCEPTS_INDEX, { score: concept.launchScore, value: concept.id });
     pipeline.expire(`${CONCEPTS_PREFIX}${concept.id}`, REPORT_TTL);

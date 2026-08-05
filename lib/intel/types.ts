@@ -25,60 +25,78 @@ export interface ITrendProvider {
 // ══════════════════════════════════════════════════════════════════════
 // CRYPTO MEME CREATION INTELLIGENCE ENGINE
 //
-// This engine INVENTS new meme coin concepts.
-// It does NOT detect existing memes.
-// It does NOT rank existing tokens.
+// Every concept MUST originate from a REAL crypto catalyst.
+// The engine thinks like a Pump.fun founder:
+// "Would I personally spend 2 SOL launching this?"
 //
-// Its only objective:
-// "If I launch this meme coin today, why would people buy it?"
+// If the answer is NO, the concept is deleted immediately.
 // ══════════════════════════════════════════════════════════════════════
+
+export interface CryptoCatalyst {
+  id: string;
+  event: string;                       // "Solana network congestion spikes"
+  category: string;                    // "solana", "defi", "ai", "hack", etc.
+  severity: number;                    // 0-100, how much attention this is getting
+  posts: RawPost[];                    // People discussing this event
+  dominantEmotion: string;             // fear, greed, frustration, hype, humor
+}
+
+export interface CommunityReaction {
+  catalyst: CryptoCatalyst;
+  jokes: string[];                     // What people are joking about
+  sarcasticComments: string[];         // Sarcastic replies
+  funnyNicknames: string[];            // What people are calling things
+  emotionalThemes: string[];           // Recurring emotional patterns
+  viralScreenshots: string[];          // Descriptions of viral content
+}
 
 export interface MemeConcept {
   id: string;
 
-  // ── The Concept ──
-  name: string;                       // "Gas Fee Goblin"
-  ticker: string;                     // "GFEE"
-  oneSentence: string;                // "A goblin that eats your gas fees before you do"
-  coreJoke: string;                   // The punchline — why this is funny
-  coreEmotion: string;                // The feeling it triggers (frustration, hype, absurdity)
+  // ── The Catalyst ──
+  cryptoCatalyst: string;              // The REAL event this came from
+  catalystCategory: string;            // solana, defi, ai, hack, etc.
 
-  // ── Narrative Origin ──
-  narrative: string;                  // The underlying narrative this concept emerged from
-  narrativeContext: string;           // Full context of why this narrative exists
+  // ── The Reaction ──
+  communityReaction: string;           // What people are actually saying
+  narrative: string;                   // The emotional narrative
+
+  // ── The Concept ──
+  name: string;                        // "Transaction Goblin"
+  ticker: string;                      // "TXGN"
+  oneSentence: string;                 // "A goblin that eats your pending transactions"
+  memeStory: string;                   // Full story of why this exists
+  coreJoke: string;                    // The punchline
+  coreEmotion: string;                 // The feeling it triggers
 
   // ── Target ──
-  targetAudience: string;             // Who would buy this
-  communityType: string;              // What kind of community forms around it
+  expectedAudience: string;            // Who would buy this
+  whyItCouldTrend: string;             // Why this could hit Pump.fun trending
 
   // ── Visual ──
-  mascot: string;                     // Character description
-  visualStyle: string;                // Art style direction
-  logoConcept: string;                // Logo description
-  imagePrompt: string;                // AI image generation prompt
+  mascot: string;                      // Character description
+  logoIdea: string;                    // Logo description
+  imagePrompt: string;                 // AI image generation prompt
 
   // ── Scoring (0-100) ──
-  launchScore: number;                // Final composite score
-  originalityScore: number;           // How novel (25%)
-  viralityScore: number;              // How shareable (20%)
-  visualPotential: number;            // Mascot/sticker/profile pic potential (15%)
-  narrativeStrength: number;          // How well-formed is the story (15%)
-  brandability: number;               // Rememberable, pronounceable (10%)
-  communityFit: number;               // Does crypto twitter love this (10%)
-  competitionLevel: number;           // How many similar tokens exist (5%)
+  launchScore: number;                 // Final composite — would I spend 2 SOL?
+  viralityScore: number;               // How shareable (20%)
+  originalityScore: number;            // How novel (25%)
+  brandability: number;                // Rememberable (10%)
+  competitionLevel: number;            // How many similar tokens (5%)
+  narrativeStrength: number;           // Story strength (15%)
+  visualPotential: number;             // Mascot potential (15%)
+  communityFit: number;                // Crypto degen culture fit (10%)
 
   // ── Competition ──
   existingTokens: number;
-  competitionNote: string;
 
   // ── Evidence ──
-  supportingSignals: string[];
-  postsUsed: EvidencePost[];
+  supportingPosts: EvidencePost[];
   sourcesScanned: string[];
 
   // ── Timing ──
   generatedAt: number;
-  estimatedChance: string;            // "High" / "Medium" / "Low"
 }
 
 export interface EvidencePost {
@@ -89,19 +107,10 @@ export interface EvidencePost {
   timestamp: number;
 }
 
-export interface NarrativeSignal {
-  theme: string;                      // "gas fee frustration"
-  strength: number;                   // 0-100
-  postCount: number;
-  sourceCount: number;
-  emotion: string;                    // dominant emotion
-  posts: RawPost[];
-}
-
 export interface ConceptReport {
   generatedAt: number;
   concepts: MemeConcept[];
-  narrativesDetected: NarrativeSignal[];
+  catalystsDetected: CryptoCatalyst[];
   postsProcessed: number;
   sourcesScanned: string[];
   windowHours: number;
@@ -111,13 +120,11 @@ export interface ConceptReport {
 export interface PipelineDiagnostics {
   collectedPosts: number;
   cryptoPosts: number;
-  memePosts: number;
-  newsPosts: number;
-  rejectedPosts: number;
-  narrativesDetected: number;
+  catalystsDetected: number;
+  reactionsExtracted: number;
   conceptsGenerated: number;
-  conceptsFiltered: number;
-  topConcepts: number;
+  conceptsRejected: number;
+  highConviction: number;
 }
 
 // Legacy aliases
@@ -126,3 +133,4 @@ export type IntelReport = ConceptReport;
 export type NarrativeCluster = never;
 export type LaunchOpportunity = MemeConcept;
 export type NarrativeReport = ConceptReport;
+export type NarrativeSignal = CryptoCatalyst;

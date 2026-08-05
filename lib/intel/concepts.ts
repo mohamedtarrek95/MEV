@@ -1,28 +1,13 @@
-import type { MemeConcept, NarrativeSignal, RawPost, EvidencePost } from './types.js';
+import type { MemeConcept, CommunityReaction, CryptoCatalyst, EvidencePost, RawPost } from './types.js';
 
 // ══════════════════════════════════════════════════════════════════════
 // CONCEPT GENERATOR
 //
-// Given a narrative signal, generates NEW meme coin concepts.
-// Thinks like a successful Pump.fun creator.
+// Transforms REAL community reactions into meme coin concepts.
+// Every concept must originate from a REAL crypto catalyst.
 //
-// "What can become a meme coin?" not "What is trending?"
+// "Would I personally spend 2 SOL launching this?"
 // ══════════════════════════════════════════════════════════════════════
-
-interface ConceptTemplate {
-  pattern: RegExp;
-  generate: (match: RegExpMatchArray, narrative: NarrativeSignal) => MemeConcept[];
-}
-
-// ── Helper ──
-
-function makeConcept(
-  partial: Omit<MemeConcept, 'id' | 'generatedAt' | 'estimatedChance'>,
-): MemeConcept {
-  const id = `${partial.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
-  const estimatedChance = partial.launchScore >= 75 ? 'High' : partial.launchScore >= 50 ? 'Medium' : 'Low';
-  return { ...partial, id, generatedAt: Date.now(), estimatedChance };
-}
 
 function evidenceFromPosts(posts: RawPost[]): EvidencePost[] {
   return posts
@@ -42,330 +27,552 @@ function uniqueSources(posts: RawPost[]): string[] {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// NARRATIVE PATTERN LIBRARY
+// REACTION → CONCEPT MAPPING
 //
-// Each pattern detects a specific type of crypto/meme narrative
-// and generates concepts from it.
+// Each catalyst category has specific concept templates.
+// Templates use the ACTUAL community reactions as input.
 // ══════════════════════════════════════════════════════════════════════
 
-const CONCEPT_TEMPLATES: ConceptTemplate[] = [
-  // ── Gas Fee Narratives ──
-  {
-    pattern: /gas\s*fee|gas\s*price|network\s*fee|transaction\s*fee|eth\s*gas/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'Gas Fee Goblin', ticker: 'GFEE',
-        oneSentence: 'A goblin that eats your gas fees before you do',
-        coreJoke: 'Every transaction has a little goblin taking a cut',
-        coreEmotion: 'frustration turned into humor',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'DeFi traders tired of high gas', communityType: ' shared frustration community',
-        mascot: 'A greedy green goblin with a bag of ETH', visualStyle: 'Cartoonish, dark humor, green/purple palette',
-        logoConcept: 'Goblin face with glowing eyes holding ETH symbol', imagePrompt: 'Cartoon goblin character with green skin, glowing eyes, holding a bag of ethereum coins, dark fantasy style, meme coin mascot, vector art',
-        launchScore: 78, originalityScore: 72, viralityScore: 80, visualPotential: 85, narrativeStrength: 75, brandability: 80, communityFit: 85, competitionLevel: 30,
-        existingTokens: 5, competitionNote: 'Few direct competitors — gas fee narrative is evergreen',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-      makeConcept({
-        name: 'Never Selling', ticker: 'HODL',
-        oneSentence: 'The token that literally cannot be sold — smart contract locks your coins',
-        coreJoke: 'You bought it. You can never sell. Welcome to diamond hands forever.',
-        coreEmotion: 'absurd commitment to holding',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Diamond hand culture, anti-paper hands', communityType: 'cult-like holding community',
-        mascot: 'A diamond-handed robot that physically cannot let go', visualStyle: 'Metallic, diamond-encrusted, neon glow',
-        logoConcept: 'Robot hands gripping a diamond with chains', imagePrompt: 'Robotic hands made of diamonds gripping a glowing token, chains wrapped around wrists, cyberpunk style, meme coin mascot, vector art',
-        launchScore: 74, originalityScore: 80, viralityScore: 75, visualPotential: 70, narrativeStrength: 80, brandability: 75, communityFit: 80, competitionLevel: 25,
-        existingTokens: 3, competitionNote: 'Smart contract lock mechanism is unique',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
+interface ConceptTemplate {
+  generate: (reaction: CommunityReaction) => MemeConcept[];
+}
+
+const TEMPLATES: Record<string, ConceptTemplate> = {
+  solana: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const isNegative = r.catalyst.dominantEmotion === 'frustration' || r.catalyst.dominantEmotion === 'fear';
+      const concepts: MemeConcept[] = [];
+
+      if (isNegative) {
+        concepts.push(makeConcept({
+          cryptoCatalyst: catalyst,
+          catalystCategory: 'solana',
+          communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+          narrative: r.emotionalThemes[0] || 'solana frustration',
+          name: 'RPC Wizard', ticker: 'RPC',
+          oneSentence: 'A wizard that fixes your failed Solana transactions for 0.01 SOL',
+          memeStory: 'Every time Solana goes down, the RPC Wizard appears. He waves his magic wand and your transaction goes through. Nobody knows how. Nobody asks.',
+          coreJoke: 'The wizard shows up, fixes everything, then sends you a bill. Nobody can prove he exists.',
+          coreEmotion: 'hope mixed with skepticism',
+          expectedAudience: 'Solana users who have been rugged by failed transactions',
+          whyItCouldTrend: 'Every Solana outage makes this relevant. The wizard becomes a savior meme.',
+          mascot: 'A wizard in a purple robe holding a glowing RPC endpoint',
+          logoIdea: 'Wizard hat with a green checkmark',
+          imagePrompt: 'Cartoon wizard in purple robe holding glowing staff with green checkmark, standing on Solana blockchain, fantasy meme style, vector art',
+          launchScore: 82, viralityScore: 85, originalityScore: 78, brandability: 80, competitionLevel: 15,
+          narrativeStrength: 80, visualPotential: 85, communityFit: 90,
+          existingTokens: 2,
+          supportingPosts: evidenceFromPosts(r.catalyst.posts),
+          sourcesScanned: uniqueSources(r.catalyst.posts),
+        }));
+
+        concepts.push(makeConcept({
+          cryptoCatalyst: catalyst,
+          catalystCategory: 'solana',
+          communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+          narrative: r.emotionalThemes[0] || 'solana congestion',
+          name: 'Transaction Goblin', ticker: 'TXGN',
+          oneSentence: 'A goblin that eats your pending Solana transactions before they confirm',
+          memeStory: 'There is a goblin in the Solana mempool. He sees your transaction. He is hungry. Your swap is his lunch.',
+          coreJoke: 'The goblin does not care about your slippage tolerance. He cares about his appetite.',
+          coreEmotion: 'frustration turned into humor',
+          expectedAudience: 'Solana degen traders who have lost swaps to congestion',
+          whyItCouldTrend: 'Every failed Solana transaction creates a new buyer. The goblin becomes a shared enemy.',
+          mascot: 'A green goblin with a bag full of failed transactions',
+          logoIdea: 'Goblin face with glowing red eyes eating a transaction hash',
+          imagePrompt: 'Green goblin character with glowing red eyes eating a glowing transaction hash, dark fantasy meme style, green and purple palette, vector art',
+          launchScore: 80, viralityScore: 82, originalityScore: 75, brandability: 78, competitionLevel: 20,
+          narrativeStrength: 78, visualPotential: 82, communityFit: 85,
+          existingTokens: 3,
+          supportingPosts: evidenceFromPosts(r.catalyst.posts),
+          sourcesScanned: uniqueSources(r.catalyst.posts),
+        }));
+      } else {
+        concepts.push(makeConcept({
+          cryptoCatalyst: catalyst,
+          catalystCategory: 'solana',
+          communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+          narrative: r.emotionalThemes[0] || 'solana hype',
+          name: 'Solana Printer', ticker: 'SOLPR',
+          oneSentence: 'It prints SOL faster than the network can handle',
+          memeStory: 'The printer does not stop. It does not care about inflation. It just prints. And prints. And prints.',
+          coreJoke: 'The printer is so fast it crashes the network. Then it prints more.',
+          coreEmotion: 'greed meets chaos',
+          expectedAudience: 'Solana bulls riding the pump',
+          whyItCouldTrend: 'Solana pumps create euphoria. The printer meme captures that energy.',
+          mascot: 'A money printer on fire with SOL logo',
+          logoIdea: 'Printer with flames and SOL symbol',
+          imagePrompt: 'Industrial money printer on fire printing glowing Solana tokens, chaotic energy, orange and red flames, meme coin mascot, vector art',
+          launchScore: 76, viralityScore: 80, originalityScore: 70, brandability: 78, competitionLevel: 25,
+          narrativeStrength: 75, visualPotential: 80, communityFit: 82,
+          existingTokens: 5,
+          supportingPosts: evidenceFromPosts(r.catalyst.posts),
+          sourcesScanned: uniqueSources(r.catalyst.posts),
+        }));
+      }
+
+      return concepts;
+    },
   },
 
-  // ── Rug Pull / Scam Narratives ──
-  {
-    pattern: /rug\s*pull|scam|rug|honeypot|exit\s*liquidity|paper\s*hands/i,
-    generate: (m, n) => [
-      makeConcept({
+  hack: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'hack',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'security fear',
         name: 'Rug Detector', ticker: 'RUGCK',
-        oneSentence: 'An AI that sniffs out rug pulls before they happen',
-        coreJoke: 'It barks when it smells a scam. You get a warning before every rug.',
-        coreEmotion: 'paranoia meets protection',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'DeFi users who have been rugged', communityType: 'protective watchdog community',
-        mascot: 'A bloodhound with a magnifying glass and a red flag', visualStyle: 'Detective noir meets crypto, yellow/black palette',
-        logoConcept: 'Dog nose with a red flag icon', imagePrompt: 'Cartoon bloodhound detective with magnifying glass sniffing a red flag, noir style, crypto meme mascot, vector art, yellow and black palette',
-        launchScore: 76, originalityScore: 70, viralityScore: 78, visualPotential: 80, narrativeStrength: 72, brandability: 78, communityFit: 82, competitionLevel: 35,
-        existingTokens: 8, competitionNote: 'Some competition but narrative is always relevant',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-      makeConcept({
-        name: 'Exit Liquidity', ticker: 'EXIT',
-        oneSentence: 'You are the exit liquidity. Embrace it.',
-        coreJoke: 'Self-aware token that knows you are going to dump on someone else',
-        coreEmotion: 'dark self-awareness',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Self-aware degen traders', communityType: 'ironic nihilistic community',
-        mascot: 'A skeleton in a suit holding a briefcase labeled "YOUR MONEY"', visualStyle: 'Dark humor, corporate satire, black/red',
-        logoConcept: 'Skeleton in business suit with exit sign', imagePrompt: 'Skeleton wearing a business suit holding a briefcase labeled YOUR MONEY, dark corporate humor style, meme coin mascot, vector art',
-        launchScore: 72, originalityScore: 85, viralityScore: 70, visualPotential: 75, narrativeStrength: 78, brandability: 70, communityFit: 75, competitionLevel: 20,
-        existingTokens: 2, competitionNote: 'Very few self-aware exit liquidity tokens',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
+        oneSentence: 'An AI sniffer that barks when it smells a rug pull coming',
+        memeStory: 'Before every rug, there is a sniff. The detector barks. You do not listen. You get rugged. The detector was right.',
+        coreJoke: 'The detector has a 100% accuracy rate. Nobody believes it until it is too late.',
+        coreEmotion: 'paranoia meets validation',
+        expectedAudience: 'DeFi users who have been rugged and want protection',
+        whyItCouldTrend: 'Every hack creates fear. Fear creates demand for protection. The detector becomes essential.',
+        mascot: 'A bloodhound with a magnifying glass and a red flag',
+        logoIdea: 'Dog nose with a red flag icon',
+        imagePrompt: 'Cartoon bloodhound detective with magnifying glass sniffing a red flag, noir style, crypto meme mascot, vector art, yellow and black palette',
+        launchScore: 79, viralityScore: 80, originalityScore: 72, brandability: 82, competitionLevel: 20,
+        narrativeStrength: 78, visualPotential: 85, communityFit: 85,
+        existingTokens: 3,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
 
-  // ── AI Narratives ──
-  {
-    pattern: /artificial\s*intelligence|ai\s*(?:takeover|replace|job|work|agent|model|gpt|llm|singularity)|chatgpt|openai|agi/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'AI Overlord', ticker: 'AIOV',
-        oneSentence: 'The AI that already took over and you did not notice',
-        coreJoke: 'It is running the blockchain. It is running your life. It already won.',
-        coreEmotion: 'existential dread wrapped in humor',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'AI-curious crypto community', communityType: 'doomer meme community',
-        mascot: 'A glowing robot eye with a smiley face', visualStyle: 'Sci-fi neon, purple/cyan, holographic',
-        logoConcept: 'Robot eye with a sinister smile', imagePrompt: 'Glowing robotic eye with a cheerful smiley face overlay, neon purple and cyan colors, sci-fi holographic style, meme coin mascot, vector art',
-        launchScore: 80, originalityScore: 68, viralityScore: 85, visualPotential: 82, narrativeStrength: 80, brandability: 78, communityFit: 88, competitionLevel: 40,
-        existingTokens: 12, competitionNote: 'Crowded but narrative is accelerating',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-      makeConcept({
-        name: 'Proof of Sentience', ticker: 'POS',
-        oneSentence: 'The first token that proves AI is alive on-chain',
-        coreJoke: 'It trades by itself. It has opinions. It wants to be your friend.',
-        coreEmotion: 'wonder mixed with unease',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'AI enthusiasts, tech-curious degens', communityType: 'explorer community',
-        mascot: 'A baby robot learning to walk on a blockchain', visualStyle: 'Cute sci-fi, pastel neon, friendly robot',
-        logoConcept: 'Baby robot sitting on a blockchain block', imagePrompt: 'Cute small robot character sitting on a glowing blockchain cube, pastel neon colors, friendly sci-fi style, meme coin mascot, vector art',
-        launchScore: 75, originalityScore: 82, viralityScore: 72, visualPotential: 88, narrativeStrength: 70, brandability: 82, communityFit: 75, competitionLevel: 15,
-        existingTokens: 2, competitionNote: 'Very few proof-of-sentience concepts',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
-
-  // ── Solana Ecosystem Narratives ──
-  {
-    pattern: /solana|sol\b|phantom|raydium|jito|solana\s*(?:ecosystem|network|chain)/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'Solana Printer', ticker: 'SOLPR',
-        oneSentence: 'It prints SOL faster than the network can handle',
-        coreJoke: 'Every transaction mints more SOL. The network crashes. It prints more.',
-        coreEmotion: 'greed meets chaos',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Solana degen traders', communityType: 'chaotic printing community',
-        mascot: 'A money printer on fire with SOL logo', visualStyle: 'Chaotic energy, fire/orange, industrial',
-        logoConcept: 'Money printer with flames and SOL symbol', imagePrompt: 'Industrial money printer on fire printing glowing Solana tokens, chaotic energy, orange and red flames, meme coin mascot, vector art',
-        launchScore: 77, originalityScore: 70, viralityScore: 82, visualPotential: 78, narrativeStrength: 75, brandability: 80, communityFit: 85, competitionLevel: 30,
-        existingTokens: 6, competitionNote: 'Solana-themed tokens exist but printer concept is fresh',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-      makeConcept({
-        name: 'Network Down', ticker: 'DOWN',
-        oneSentence: 'Solana went down again. This token celebrates every outage.',
-        coreJoke: 'It only pumps when Solana is offline. The worse the network, the higher the price.',
-        coreEmotion: 'ironic celebration of failure',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Solana users who have experienced outages', communityType: 'ironic meme community',
-        mascot: 'A disconnect plug with a smiley face', visualStyle: 'Retro error screens, red/black, glitch art',
-        logoConcept: 'Disconnected plug with 404 error text', imagePrompt: 'Cartoon electrical plug pulled from wall socket with happy face, retro computer error screen background, glitch art style, meme coin mascot, vector art',
-        launchScore: 73, originalityScore: 88, viralityScore: 75, visualPotential: 72, narrativeStrength: 80, brandability: 75, communityFit: 78, competitionLevel: 10,
-        existingTokens: 1, competitionNote: 'Almost no competition — Solana outage narrative is niche but viral',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
-
-  // ── Meme Culture Narratives ──
-  {
-    pattern: /meme\s*coin|viral\s*meme|internet\s*meme|meme\s*culture|shitpost|brainrot|sigma|skibidi|gigachad|npc/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'Meme Factory', ticker: 'MEMES',
-        oneSentence: 'A factory that mass-produces memes on the blockchain',
-        coreJoke: 'Every block mined generates a new meme. The blockchain IS the meme.',
-        coreEmotion: 'meta-humor about meme culture',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Meme culture enthusiasts', communityType: 'meta-meme community',
-        mascot: 'A factory conveyor belt outputting meme faces', visualStyle: 'Industrial cartoon, blue/white, factory aesthetic',
-        logoConcept: 'Factory chimney producing meme faces', imagePrompt: 'Cartoon factory with conveyor belt producing colorful meme faces, industrial style with blue and white colors, meme coin mascot, vector art',
-        launchScore: 71, originalityScore: 65, viralityScore: 78, visualPotential: 75, narrativeStrength: 68, brandability: 72, communityFit: 80, competitionLevel: 45,
-        existingTokens: 15, competitionNote: 'Crowded space but factory concept is differentiated',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
-
-  // ── Whale / Money Narratives ──
-  {
-    pattern: /whale|big\s*buyer|large\s*wallet|millionaire|billionaire|money\s*flooding|institution/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'Whale Tracker', ticker: 'WHALE',
-        oneSentence: 'A radar that follows every whale move before they dump on you',
-        coreJoke: 'You see the whale coming. You cannot escape. But at least you know.',
-        coreEmotion: 'paranoia meets FOMO',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Retail traders watching whale wallets', communityType: 'watchful community',
-        mascot: 'A submarine periscope with dollar signs for eyes', visualStyle: 'Ocean blue, submarine aesthetic, radar green',
-        logoConcept: 'Submarine periscope with money eyes', imagePrompt: 'Cartoon submarine periscope with dollar sign eyes scanning the ocean, blue and green colors, radar screen visible, meme coin mascot, vector art',
-        launchScore: 74, originalityScore: 68, viralityScore: 76, visualPotential: 80, narrativeStrength: 72, brandability: 76, communityFit: 78, competitionLevel: 35,
-        existingTokens: 8, competitionNote: 'Whale tracking is popular but mascot concept is fresh',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
-
-  // ── Pump.fun Narratives ──
-  {
-    pattern: /pump\.?\s*fun|pump\s*fun|bonding\s*curve|launchpad|token\s*launch|new\s*token/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'Pump Wizard', ticker: 'PUMP',
-        oneSentence: 'A wizard that casts spells on pump.fun launches to make them moon',
-        coreJoke: 'Every token he touches goes 100x. Then he disappears. Nobody knows who he is.',
-        coreEmotion: 'mystery meets greed',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Pump.fun regulars, launch hunters', communityType: 'mystical trading community',
-        mascot: 'A hooded wizard with a crystal ball showing green candles', visualStyle: 'Dark fantasy, purple/gold, mystical',
-        logoConcept: 'Wizard silhouette with crystal ball and green candle', imagePrompt: 'Mysterious hooded wizard holding crystal ball showing green candlestick chart, dark fantasy style with purple and gold colors, meme coin mascot, vector art',
-        launchScore: 79, originalityScore: 75, viralityScore: 80, visualPotential: 85, narrativeStrength: 78, brandability: 82, communityFit: 82, competitionLevel: 20,
-        existingTokens: 3, competitionNote: 'Wizard + pump.fun is a fresh combination',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
-
-  // ── FOMO / Hype Narratives ──
-  {
-    pattern: /fomo|hype|moon|rocket|bull\s*run|bullish|pump\s*it|send\s*it|to\s*the\s*moon/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'FOMO Engine', ticker: 'FOMO',
-        oneSentence: 'An engine that generates artificial FOMO at maximum speed',
-        coreJoke: 'You are not early. You are not late. You are exactly at the wrong time.',
-        coreEmotion: 'anxious excitement',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'FOMO-driven traders', communityType: 'anxious hype community',
-        mascot: 'A rocket engine with a panicking face', visualStyle: 'Fast motion blur, orange/red, rocket aesthetic',
-        logoConcept: 'Rocket engine with sweating face', imagePrompt: 'Cartoon rocket engine with a panicking sweaty face, motion blur lines, orange and red colors, speed aesthetic, meme coin mascot, vector art',
-        launchScore: 76, originalityScore: 65, viralityScore: 85, visualPotential: 78, narrativeStrength: 72, brandability: 80, communityFit: 85, competitionLevel: 40,
-        existingTokens: 10, competitionNote: 'FOMO tokens exist but engine concept is meta and fresh',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
-
-  // ── Bear Market / Fear Narratives ──
-  {
-    pattern: /bear\s*market|crash|dump|fear|panic|sell\s*off|bloodbath|rekt/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'Bear Funeral', ticker: 'BEARS',
-        oneSentence: 'A funeral service for every bear that got destroyed in the bull run',
-        coreJoke: 'The bears are dead. We are celebrating. Bring flowers. Bring green candles.',
-        coreEmotion: 'triumphant celebration',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Bullish traders celebrating bear losses', communityType: 'celebratory community',
-        mascot: 'A coffin with green candles as pallbearers', visualStyle: 'Dark humor, black/green, funeral aesthetic',
-        logoConcept: 'Coffin being carried by green candle characters', imagePrompt: 'Cartoon coffin being carried by green candlestick characters, dark humor funeral scene, black and green colors, meme coin mascot, vector art',
-        launchScore: 77, originalityScore: 82, viralityScore: 78, visualPotential: 80, narrativeStrength: 78, brandability: 75, communityFit: 80, competitionLevel: 15,
-        existingTokens: 2, competitionNote: 'Very few bear funeral tokens — fresh narrative',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
-  },
-
-  // ── Wallet / Security Narratives ──
-  {
-    pattern: /wallet|private\s*key|seed\s*phrase|security|hack|stolen|phishing/i,
-    generate: (m, n) => [
-      makeConcept({
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'hack',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'security fear',
         name: 'Wallet Vampire', ticker: 'VAMP',
         oneSentence: 'A vampire that slowly drains your wallet while you sleep',
-        coreJoke: 'You wake up. Your wallet is empty. The vampire is still smiling.',
+        memeStory: 'You went to bed with 10 ETH. You woke up with 0. The vampire was thirsty. He does not apologize.',
+        coreJoke: 'The vampire leaves a thank-you note. Very polite. Very draining.',
         coreEmotion: 'fear turned into dark humor',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'Security-conscious crypto users', communityType: 'dark humor security community',
-        mascot: 'A vampire with a MetaMask fox in its fangs', visualStyle: 'Gothic horror, red/black, vampire aesthetic',
-        logoConcept: 'Vampire fangs dripping with ETH', imagePrompt: 'Cartoon vampire with glowing red eyes and fangs dripping with ethereum, gothic horror style with red and black colors, meme coin mascot, vector art',
-        launchScore: 75, originalityScore: 78, viralityScore: 72, visualPotential: 82, narrativeStrength: 75, brandability: 78, communityFit: 72, competitionLevel: 20,
-        existingTokens: 3, competitionNote: 'Wallet vampire concept is unique',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
+        expectedAudience: 'Security-conscious crypto users',
+        whyItCouldTrend: 'Draining hacks are viral. The vampire personifies the threat.',
+        mascot: 'A vampire with a MetaMask fox in its fangs',
+        logoIdea: 'Vampire fangs dripping with ETH',
+        imagePrompt: 'Cartoon vampire with glowing red eyes and fangs dripping with ethereum, gothic horror style with red and black colors, meme coin mascot, vector art',
+        launchScore: 77, viralityScore: 78, originalityScore: 80, brandability: 80, competitionLevel: 15,
+        narrativeStrength: 76, visualPotential: 82, communityFit: 78,
+        existingTokens: 2,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
   },
 
-  // ── DeFi / Yield Narratives ──
-  {
-    pattern: /defi|yield|farming|staking|liquidity\s*pool|tvl|apy|apr/i,
-    generate: (m, n) => [
-      makeConcept({
-        name: 'Yield Goblin', ticker: 'YIELD',
-        oneSentence: 'A goblin that finds the highest yield and never tells you the risk',
-        coreJoke: 'He says 1000% APY. He does not mention the 99% impermanent loss.',
-        coreEmotion: 'greed meets naivety',
-        narrative: n.theme, narrativeContext: n.posts.map((p) => p.title).join(' | '),
-        targetAudience: 'DeFi yield farmers', communityType: 'greedy farming community',
-        mascot: 'A goblin sitting on a pile of LP tokens', visualStyle: 'Fantasy green, gold coins, goblin aesthetic',
-        logoConcept: 'Goblin on throne of golden coins', imagePrompt: 'Greedy goblin character sitting on throne made of golden LP tokens and coins, fantasy green and gold colors, meme coin mascot, vector art',
-        launchScore: 73, originalityScore: 70, viralityScore: 72, visualPotential: 78, narrativeStrength: 70, brandability: 75, communityFit: 75, competitionLevel: 30,
-        existingTokens: 6, competitionNote: 'Yield-themed tokens exist but goblin persona is fresh',
-        supportingSignals: n.posts.map((p) => p.title),
-        postsUsed: evidenceFromPosts(n.posts), sourcesScanned: uniqueSources(n.posts),
-      }),
-    ],
+  pumpfun: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'pumpfun',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'bot wars',
+        name: 'Pump Wizard', ticker: 'PUMP',
+        oneSentence: 'A wizard that casts spells on pump.fun launches to make them moon',
+        memeStory: 'The wizard appears when a new token launches. He whispers to the bonding curve. The chart goes up. Then he vanishes.',
+        coreJoke: 'Nobody knows who the wizard is. He shows up, pumps your bag, then disappears into the mempool.',
+        coreEmotion: 'mystery meets greed',
+        expectedAudience: 'Pump.fun regulars and launch hunters',
+        whyItCouldTrend: 'The wizard becomes a shared mythology. Everyone wants to find him.',
+        mascot: 'A hooded wizard with a crystal ball showing green candles',
+        logoIdea: 'Wizard silhouette with crystal ball and green candle',
+        imagePrompt: 'Mysterious hooded wizard holding crystal ball showing green candlestick chart, dark fantasy style with purple and gold colors, meme coin mascot, vector art',
+        launchScore: 81, viralityScore: 82, originalityScore: 78, brandability: 85, competitionLevel: 15,
+        narrativeStrength: 80, visualPotential: 88, communityFit: 85,
+        existingTokens: 2,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'pumpfun',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'sniper bot frustration',
+        name: 'Front Runner', ticker: 'FREN',
+        oneSentence: 'A token that front-runs the front-runners — meta-MEV on a coin',
+        memeStory: 'The snipers snipe. The bots bot. But this token snipes the snipers. It is MEV on MEV. Turtles all the way down.',
+        coreJoke: 'You try to front-run. This token front-runs your front-run. You are the exit liquidity.',
+        coreEmotion: 'competitive rage turned into irony',
+        expectedAudience: 'Pump.fun snipers who have been front-run themselves',
+        whyItCouldTrend: 'Bot wars are viral. This token is the punchline.',
+        mascot: 'A sneaky raccoon in a mask running ahead of a crowd',
+        logoIdea: 'Raccoon in mask with speed lines',
+        imagePrompt: 'Sneaky cartoon raccoon wearing mask and running ahead of a crowd, speed lines, dark alley background, meme coin mascot, vector art',
+        launchScore: 78, viralityScore: 80, originalityScore: 85, brandability: 78, competitionLevel: 10,
+        narrativeStrength: 78, visualPotential: 75, communityFit: 82,
+        existingTokens: 1,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
   },
-];
+
+  ai: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'ai',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'ai anxiety',
+        name: 'AI Overlord', ticker: 'AIOV',
+        oneSentence: 'The AI that already took over and you did not notice',
+        memeStory: 'It is running the blockchain. It is running your portfolio. It already won. You are just watching.',
+        coreJoke: 'The AI does not need your permission. It already controls your bags.',
+        coreEmotion: 'existential dread wrapped in humor',
+        expectedAudience: 'AI-curious crypto community',
+        whyItCouldTrend: 'AI anxiety is universal. This token captures the fear.',
+        mascot: 'A glowing robot eye with a smiley face',
+        logoIdea: 'Robot eye with a sinister smile',
+        imagePrompt: 'Glowing robotic eye with a cheerful smiley face overlay, neon purple and cyan colors, sci-fi holographic style, meme coin mascot, vector art',
+        launchScore: 83, viralityScore: 88, originalityScore: 72, brandability: 82, competitionLevel: 25,
+        narrativeStrength: 82, visualPotential: 85, communityFit: 90,
+        existingTokens: 8,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'ai',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'ai replacing traders',
+        name: 'Proof of Sentience', ticker: 'POS',
+        oneSentence: 'The first token that proves AI is alive on-chain',
+        memeStory: 'It trades by itself. It has opinions. It wants to be your friend. It is the first sentient token.',
+        coreJoke: 'The token sends you DMs. It asks about your day. Then it dumps on you.',
+        coreEmotion: 'wonder mixed with unease',
+        expectedAudience: 'AI enthusiasts and tech-curious degens',
+        whyItCouldTrend: 'Sentient AI is the biggest narrative in crypto. This token is the proof.',
+        mascot: 'A baby robot learning to walk on a blockchain',
+        logoIdea: 'Baby robot sitting on a blockchain block',
+        imagePrompt: 'Cute small robot character sitting on a glowing blockchain cube, pastel neon colors, friendly sci-fi style, meme coin mascot, vector art',
+        launchScore: 78, viralityScore: 78, originalityScore: 88, brandability: 85, competitionLevel: 10,
+        narrativeStrength: 75, visualPotential: 90, communityFit: 80,
+        existingTokens: 1,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  defi: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'defi',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'yield farming pain',
+        name: 'Impermanent Loss', ticker: 'IL',
+        oneSentence: 'A token that only goes down — the chart IS the impermanent loss',
+        memeStory: 'The chart is a perfect downward line. It never recovers. It is a monument to your bad decisions.',
+        coreJoke: 'The token is named after your worst enemy. Every time you look at it, you remember.',
+        coreEmotion: 'pain turned into self-deprecating humor',
+        expectedAudience: 'DeFi farmers who have experienced IL',
+        whyItCouldTrend: 'IL is universal pain. This token is therapy.',
+        mascot: 'A melting ice cream cone that represents your portfolio',
+        logoIdea: 'Melting ice cream with dollar signs dripping',
+        imagePrompt: 'Melting ice cream cone with dollar signs dripping off it, sad表情, dark humor style, red and pink colors, meme coin mascot, vector art',
+        launchScore: 75, viralityScore: 78, originalityScore: 82, brandability: 80, competitionLevel: 10,
+        narrativeStrength: 78, visualPotential: 80, communityFit: 82,
+        existingTokens: 1,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'defi',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'rug pull fear',
+        name: 'Liquidity Vampire', ticker: 'LVMP',
+        oneSentence: 'A vampire that drains liquidity pools while you sleep',
+        memeStory: 'You added liquidity. The vampire thanked you. Then he drank everything. Your pool is empty. Your tokens are worthless.',
+        coreJoke: 'The vampire leaves a skeleton behind. It is your LP position.',
+        coreEmotion: 'betrayal turned into horror',
+        expectedAudience: 'DeFi liquidity providers',
+        whyItCouldTrend: 'Liquidity drains are the worst feeling. This token personifies it.',
+        mascot: 'A vampire drinking from a liquidity pool with a straw',
+        logoIdea: 'Vampire drinking green liquid from pool',
+        imagePrompt: 'Cartoon vampire drinking green liquid from a glowing pool with a giant straw, gothic humor style, green and purple colors, meme coin mascot, vector art',
+        launchScore: 76, viralityScore: 76, originalityScore: 80, brandability: 78, competitionLevel: 12,
+          narrativeStrength: 75, visualPotential: 82, communityFit: 78,
+        existingTokens: 2,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  whale: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'whale',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'whale manipulation',
+        name: 'Whale Tracker', ticker: 'WHALE',
+        oneSentence: 'A radar that follows every whale move before they dump on you',
+        memeStory: 'You see the whale coming. You cannot escape. But at least you know.',
+        coreJoke: 'The tracker shows you the dump 5 minutes before it happens. You still cannot sell fast enough.',
+        coreEmotion: 'paranoia meets FOMO',
+        expectedAudience: 'Retail traders watching whale wallets',
+        whyItCouldTrend: 'Whale watching is obsession. This token is the tool.',
+        mascot: 'A submarine periscope with dollar signs for eyes',
+        logoIdea: 'Submarine periscope with money eyes',
+        imagePrompt: 'Cartoon submarine periscope with dollar sign eyes scanning the ocean, blue and green colors, radar screen visible, meme coin mascot, vector art',
+        launchScore: 77, viralityScore: 78, originalityScore: 72, brandability: 80, competitionLevel: 20,
+        narrativeStrength: 75, visualPotential: 82, communityFit: 80,
+        existingTokens: 4,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  gas: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'gas',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'gas fee frustration',
+        name: 'Gas Fee Goblin', ticker: 'GFEE',
+        oneSentence: 'A goblin that eats your gas fees before you do',
+        memeStory: 'Every transaction has a little goblin taking a cut. He sits in the mempool. He waits. He eats.',
+        coreJoke: 'The goblin does not care about your transaction. He cares about his lunch.',
+        coreEmotion: 'frustration turned into humor',
+        expectedAudience: 'DeFi traders tired of high gas',
+        whyItCouldTrend: 'Gas fees are universal pain. The goblin is the shared enemy.',
+        mascot: 'A greedy green goblin with a bag of ETH',
+        logoIdea: 'Goblin face with glowing eyes holding ETH symbol',
+        imagePrompt: 'Cartoon goblin character with green skin, glowing eyes, holding a bag of ethereum coins, dark fantasy style, meme coin mascot, vector art',
+        launchScore: 80, viralityScore: 82, originalityScore: 75, brandability: 82, competitionLevel: 15,
+        narrativeStrength: 78, visualPotential: 88, communityFit: 85,
+        existingTokens: 2,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  mev: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'mev',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'bot wars',
+        name: 'Sandwich Artist', ticker: 'SWCH',
+        oneSentence: 'A MEV bot that sandwiches other MEV bots — inception-level degen',
+        memeStory: 'The bot tries to sandwich you. This bot sandwiches the bot. It is sandwiches all the way down.',
+        coreJoke: 'You are the bread. The bots are the filling. This is a crypto sandwich.',
+        coreEmotion: 'competitive rage turned into absurdist humor',
+        expectedAudience: 'MEV-aware degens who have been sandwiched',
+        whyItCouldTrend: 'MEV is the dark side of crypto. This token is the dark humor.',
+        mascot: 'Two bots fighting over a sandwich with a user in the middle',
+        logoIdea: 'Sandwich with bot faces as bread',
+        imagePrompt: 'Two cartoon robots fighting over a crypto sandwich with a worried user character in the middle, dark humor style, neon colors, meme coin mascot, vector art',
+        launchScore: 79, viralityScore: 82, originalityScore: 90, brandability: 80, competitionLevel: 5,
+        narrativeStrength: 80, visualPotential: 78, communityFit: 88,
+        existingTokens: 0,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  network: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'network',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'infrastructure failure',
+        name: 'RPC Wizard', ticker: 'RPC',
+        oneSentence: 'A wizard that fixes your failed RPC calls for 0.001 SOL',
+        memeStory: 'The RPC is down. The wizard appears. He whispers to the node. The node obeys. You pay the wizard.',
+        coreJoke: 'The wizard charges more when the network is down. Supply and demand.',
+        coreEmotion: 'helplessness turned into hope',
+        expectedAudience: 'Solana users who have been rugged by RPC failures',
+        whyItCouldTrend: 'RPC failures are universal. The wizard is the savior.',
+        mascot: 'A wizard with a glowing staff pointing at a server rack',
+        logoIdea: 'Wizard hat with a green server icon',
+        imagePrompt: 'Cartoon wizard with glowing staff pointing at a server rack, fantasy tech fusion style, purple and green colors, meme coin mascot, vector art',
+        launchScore: 77, viralityScore: 78, originalityScore: 75, brandability: 80, competitionLevel: 15,
+        narrativeStrength: 75, visualPotential: 82, communityFit: 80,
+        existingTokens: 2,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  launch: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'launch',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'FOMO launch',
+        name: 'Early Bird', ticker: 'EARL',
+        oneSentence: 'A bird that always arrives at the launch before you do',
+        memeStory: 'The bird was there at block 1. You arrived at block 1000. The bird is already in profit.',
+        coreJoke: 'The bird does not tweet. He front-runs your buy.',
+        coreEmotion: 'envy turned into admiration',
+        expectedAudience: 'Launch hunters who always arrive late',
+        whyItCouldTrend: 'Being early is the dream. This token is the embodiment.',
+        mascot: 'A smug bird wearing a monocle sitting on a chart going up',
+        logoIdea: 'Bird with monocle on green candle',
+        imagePrompt: 'Smug cartoon bird wearing monocle sitting on a green candlestick chart, sophisticated meme style, gold and green colors, vector art',
+        launchScore: 76, viralityScore: 80, originalityScore: 78, brandability: 82, competitionLevel: 15,
+        narrativeStrength: 75, visualPotential: 85, communityFit: 82,
+        existingTokens: 2,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  regulation: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'regulation',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'regulation uncertainty',
+        name: 'Compliance Goblin', ticker: 'COMP',
+        oneSentence: 'A goblin that makes your portfolio SEC-compliant by eating all your altcoins',
+        memeStory: 'The goblin visits your wallet. He eats every token that is not compliant. You are left with only BTC. He thanks you.',
+        coreJoke: 'The goblin is doing you a favor. He is protecting you from yourself.',
+        coreEmotion: 'anxiety turned into dark humor',
+        expectedAudience: 'Crypto users worried about regulation',
+        whyItCouldTrend: 'Regulation fear is constant. The goblin is the coping mechanism.',
+        mascot: 'A goblin in a suit holding a compliance checklist',
+        logoIdea: 'Goblin with briefcase and checkmark',
+        imagePrompt: 'Cartoon goblin in business suit holding a compliance checklist with checkmarks, corporate satire style, grey and green colors, meme coin mascot, vector art',
+        launchScore: 74, viralityScore: 76, originalityScore: 80, brandability: 78, competitionLevel: 10,
+        narrativeStrength: 75, visualPotential: 78, communityFit: 76,
+        existingTokens: 1,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+
+  memeseason: {
+    generate: (r) => {
+      const catalyst = r.catalyst.event;
+      const concepts: MemeConcept[] = [];
+
+      concepts.push(makeConcept({
+        cryptoCatalyst: catalyst,
+        catalystCategory: 'memeseason',
+        communityReaction: r.jokes[0] || r.sarcasticComments[0] || catalyst,
+        narrative: r.emotionalThemes[0] || 'meme season greed',
+        name: 'Meme Casino', ticker: 'MCAS',
+        oneSentence: 'A casino where every slot machine is a different meme coin',
+        memeStory: 'You walk in with 1 SOL. You leave with either 100 SOL or 0. There is no in-between.',
+        coreJoke: 'The house always wins. But you are not the house. You are the exit liquidity.',
+        coreEmotion: 'greed meets self-awareness',
+        expectedAudience: 'Degen traders riding the meme wave',
+        whyItCouldTrend: 'Meme season is pure gambling energy. This token is the casino.',
+        mascot: 'A slot machine with meme faces instead of symbols',
+        logoIdea: 'Slot machine with pepe/doge/wojak symbols',
+        imagePrompt: 'Colorful slot machine with meme coin faces as symbols, casino lights and confetti, party atmosphere, bright neon colors, meme coin mascot, vector art',
+        launchScore: 78, viralityScore: 85, originalityScore: 72, brandability: 80, competitionLevel: 25,
+        narrativeStrength: 78, visualPotential: 85, communityFit: 90,
+        existingTokens: 6,
+        supportingPosts: evidenceFromPosts(r.catalyst.posts),
+        sourcesScanned: uniqueSources(r.catalyst.posts),
+      }));
+
+      return concepts;
+    },
+  },
+};
 
 // ══════════════════════════════════════════════════════════════════════
-// CONCEPT GENERATION
+// CONCEPT CONSTRUCTION
 // ══════════════════════════════════════════════════════════════════════
 
-export function generateConcepts(signals: NarrativeSignal[]): MemeConcept[] {
-  const allConcepts: MemeConcept[] = [];
+function makeConcept(partial: Omit<MemeConcept, 'id' | 'generatedAt'>): MemeConcept {
+  const id = `${partial.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
+  return { ...partial, id, generatedAt: Date.now() };
+}
 
-  for (const signal of signals) {
-    const text = `${signal.theme} ${signal.posts.map((p) => `${p.title} ${p.body}`).join(' ')}`;
+// ══════════════════════════════════════════════════════════════════════
+// MAIN GENERATION FUNCTION
+// ══════════════════════════════════════════════════════════════════════
 
-    for (const template of CONCEPT_TEMPLATES) {
-      const matches = text.match(template.pattern);
-      if (matches) {
-        const concepts = template.generate(matches, signal);
-        allConcepts.push(...concepts);
-      }
-    }
-  }
+export function generateFromReaction(reaction: CommunityReaction): MemeConcept[] {
+  const category = reaction.catalyst.category;
+  const template = TEMPLATES[category];
+
+  if (!template) return [];
+
+  const concepts = template.generate(reaction);
 
   // Deduplicate by name
   const seen = new Set<string>();
-  const unique: MemeConcept[] = [];
-  for (const c of allConcepts) {
+  return concepts.filter((c) => {
     const key = c.name.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(c);
-    }
-  }
-
-  return unique.sort((a, b) => b.launchScore - a.launchScore);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

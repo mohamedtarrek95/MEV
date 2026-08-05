@@ -6,44 +6,51 @@ export interface EvidencePost {
   timestamp: number;
 }
 
+export interface CryptoCatalyst {
+  id: string;
+  event: string;
+  category: string;
+  severity: number;
+  dominantEmotion: string;
+}
+
 export interface MemeConcept {
   id: string;
+
+  cryptoCatalyst: string;
+  catalystCategory: string;
+  communityReaction: string;
+  narrative: string;
 
   name: string;
   ticker: string;
   oneSentence: string;
+  memeStory: string;
   coreJoke: string;
   coreEmotion: string;
 
-  narrative: string;
-  narrativeContext: string;
-
-  targetAudience: string;
-  communityType: string;
+  expectedAudience: string;
+  whyItCouldTrend: string;
 
   mascot: string;
-  visualStyle: string;
-  logoConcept: string;
+  logoIdea: string;
   imagePrompt: string;
 
   launchScore: number;
-  originalityScore: number;
   viralityScore: number;
-  visualPotential: number;
-  narrativeStrength: number;
+  originalityScore: number;
   brandability: number;
-  communityFit: number;
   competitionLevel: number;
+  narrativeStrength: number;
+  visualPotential: number;
+  communityFit: number;
 
   existingTokens: number;
-  competitionNote: string;
 
-  supportingSignals: string[];
-  postsUsed: EvidencePost[];
+  supportingPosts: EvidencePost[];
   sourcesScanned: string[];
 
   generatedAt: number;
-  estimatedChance: string;
 }
 
 export interface NarrativeSignal {
@@ -57,19 +64,17 @@ export interface NarrativeSignal {
 export interface PipelineDiagnostics {
   collectedPosts: number;
   cryptoPosts: number;
-  memePosts: number;
-  newsPosts: number;
-  rejectedPosts: number;
-  narrativesDetected: number;
+  catalystsDetected: number;
+  reactionsExtracted: number;
   conceptsGenerated: number;
-  conceptsFiltered: number;
-  topConcepts: number;
+  conceptsRejected: number;
+  highConviction: number;
 }
 
 export interface ConceptReport {
   generatedAt: number;
   concepts: MemeConcept[];
-  narrativesDetected: NarrativeSignal[];
+  catalystsDetected: CryptoCatalyst[];
   postsProcessed: number;
   sourcesScanned: string[];
   windowHours: number;

@@ -17,7 +17,7 @@ function readCache(): ConceptReport | null {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const envelope: CacheEnvelope = JSON.parse(raw);
-    if (envelope.version !== 3) { localStorage.removeItem(CACHE_KEY); return null; }
+    if (envelope.version !== 4) { localStorage.removeItem(CACHE_KEY); return null; }
     if (Date.now() - envelope.timestamp > CACHE_TTL_MS) { localStorage.removeItem(CACHE_KEY); return null; }
     return envelope.report;
   } catch {
@@ -28,7 +28,7 @@ function readCache(): ConceptReport | null {
 
 function writeCache(report: ConceptReport) {
   try {
-    const envelope: CacheEnvelope = { version: 3, timestamp: Date.now(), report };
+    const envelope: CacheEnvelope = { version: 4, timestamp: Date.now(), report };
     localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
   } catch { /* ignore */ }
 }
@@ -47,15 +47,6 @@ export function getScoreBg(score: number): string {
   if (score >= 40) return 'bg-yellow-500';
   if (score >= 20) return 'bg-orange-500';
   return 'bg-red-500';
-}
-
-export function getChanceColor(chance: string): string {
-  switch (chance) {
-    case 'High': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
-    case 'Medium': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
-    case 'Low': return 'bg-red-500/20 text-red-300 border-red-500/30';
-    default: return 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30';
-  }
 }
 
 interface UseIntelResult {
