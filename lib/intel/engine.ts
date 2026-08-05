@@ -36,205 +36,355 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-function tokenize(text: string): string[] {
-  return normalizeText(text).split(/\s+/).filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
-}
-
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 2: ENTITY EXTRACTION
-//
-// Extract real-world entities from posts. These are the building blocks
-// of viral narratives — ideas that spread before someone creates a token.
+// SECTION 2: REJECTION LISTS — Things that are NOT meme narratives
 // ══════════════════════════════════════════════════════════════════════
 
-const CASHTAG_RE = /\$([A-Za-z]{2,10})\b/g;
-const HASHTAG_RE = /#([A-Za-z0-9_]{2,30})\b/g;
-
-const MEME_LEXICON = new Set([
-  'brainrot','gigachad','skibidi','rizz','sigma','beta','alpha','npc',
-  'copypasta','stan','simp','wholesome','based','cringe','yeet',
-  'slay','periodt','bet','no cap','fr','ong','istg','smh','nvm',
-  'bruh','sus','among','fortnite','minecraft','roblox','valorant',
-  'pokemon','mario','zelda','kirby','meme','viral','fyp',
-  'ayo','oof','sheesh','caught','caught in 4k','4k',
-  'unreal','dream','nightmare','core','era','aesthetic','vibe',
-  'delulu','ick','red flag','green flag','main character',
-  'brain rot','italian brainrot','italian brain rot','brain rot italian',
+const REJECT_COMPANIES = new Set([
+  'apple','google','microsoft','amazon','netflix','spotify','tiktok','instagram',
+  'youtube','twitter','facebook','snapchat','discord','twitch','reddit','tesla',
+  'spacex','openai','anthropic','meta','nvidia','intel','amd','qualcomm',
+  'samsung','sony','nintendo','valve','epic','adobe','salesforce','oracle',
+  'ibm','cisco','vmware','uber','lyft','airbnb','doordash','shopify',
+  'stripe','square','paypal','visa','mastercard','jpmorgan','goldman',
+  'boeing','lockheed','northrop','raytheon','caterpillar','deere',
+  'roblox','fortnite','minecraft','valorant','apex','pubg','gta',
 ]);
 
-const KNOWN_MEMES = new Set([
-  'pepe','doge','wojak','chad','gigachad','doomer','boomer','zoomer',
-  'popcat','brett','mog','bome','wif','mew','cat in a dogs world',
-  'shiba','shib','bonk','cat','dog','frog','duck','bear',
-  'panda','penguin','shark','whale','dragon','unicorn',
-  'italian brainrot','sigma','skibidi','rizz','npc','brainrot',
-  'trollface','wojack','feels guy','doomer','tradwife',
-  'doge coin','pepe coin','bonk coin',
+const REJECT_POLITICIANS = new Set([
+  'trump','biden','putin','xi','zelensky','modi','erdogan','bolsonaro',
+  'macron','scholz','sunak','meloni','netanyahu','mbs',
+  'congress','senate','parliament','kremlin','white house','capitol',
+  'democrat','republican','liberal','conservative','election','vote',
+  'impeach','senator','governor','president','prime minister','mayor',
 ]);
 
-const KNOWN_TOKEN_ALIASES: Record<string, string> = {
-  'pepe': 'PEPE', 'pepe coin': 'PEPE', 'pepecoin': 'PEPE', 'pepe the frog': 'PEPE',
-  'bonk': 'BONK', 'bonk coin': 'BONK', 'bonkcoin': 'BONK', 'bonk inu': 'BONK',
-  'doge': 'DOGE', 'dogecoin': 'DOGE', 'doge coin': 'DOGE',
-  'shiba': 'SHIBA', 'shiba inu': 'SHIBA', 'shib': 'SHIBA', 'shibainu': 'SHIBA',
-  'wojak': 'WOJAK', 'wojak coin': 'WOJAK', 'wojakcoin': 'WOJAK',
-  'dogwifhat': 'WIF', 'dog wif hat': 'WIF', 'wif': 'WIF',
-  'popcat': 'POPCAT', 'pop cat': 'POPCAT',
-  'brett': 'BRETT', 'brett on base': 'BRETT',
-  'mog': 'MOG', 'mog coin': 'MOG', 'mogcoin': 'MOG',
-  'bome': 'BOME', 'book of meme': 'BOME', 'bookofmeme': 'BOME',
-  'cat in a dogs world': 'MEW', 'meow': 'MEW', 'mew': 'MEW',
-  'italian brainrot': 'ITALIAN BRAINROT', 'italian brain rot': 'ITALIAN BRAINROT', 'brainrot italian': 'ITALIAN BRAINROT',
-};
+const REJECT_FINANCE_WORDS = new Set([
+  'stock','bond','etf','hedge fund','portfolio','dividend',
+  'earnings','revenue','profit','loss','ipo','merger','acquisition',
+  'bankruptcy','debt','interest rate','inflation','gdp','unemployment',
+  'federal reserve','treasury','nyse','nasdaq','dow jones',
+  'price','market cap','volume','liquidity','fdv','tvl',
+  'holders','swaps','transactions','24h change','7d change',
+]);
 
-const TOKEN_SUFFIX_RE = /\s*(coin|token|project|protocol|chain|network|inu|finance|dao|labs|verse|swap|pad|market|exchange|meme|army|community|gang|squad|nation|world)$/i;
+const REJECT_NEWS_WORDS = new Set([
+  'war','conflict','invasion','ceasefire','nuclear','missile','bombing',
+  'sanctions','tariff','embargo','diplomacy','summit','treaty',
+  'earthquake','hurricane','tornado','flood','wildfire','drought',
+  'pandemic','outbreak','virus','lockdown','quarantine',
+]);
 
-interface ExtractedEntity {
-  raw: string;
-  normalized: string;
-  category: string;
-}
+const REJECT_COUNTRIES = new Set([
+  'america','united states','usa','uk','britain','england','france',
+  'germany','china','japan','russia','india','brazil','mexico',
+  'canada','australia','korea','iran','iraq','syria','ukraine',
+  'israel','palestine','taiwan','hong kong','singapore',
+]);
 
-function normalizeEntity(raw: string): string {
-  let norm = raw.toLowerCase().trim();
-  norm = norm.replace(/^[\$#\s]+/, '');
-  norm = norm.replace(TOKEN_SUFFIX_RE, '');
-  norm = norm.replace(/[^a-z0-9\s]/g, '');
-  norm = norm.replace(/\s+/g, ' ').trim();
-  if (KNOWN_TOKEN_ALIASES[norm]) return KNOWN_TOKEN_ALIASES[norm];
-  if (norm.length >= 2) return norm.toUpperCase();
-  return '';
-}
-
-function extractEntitiesFromPost(title: string, body: string): ExtractedEntity[] {
-  const allText = `${title} ${body}`;
-  const entities: ExtractedEntity[] = [];
-  const seen = new Set<string>();
-
-  // 1. Cashtags
-  for (const match of allText.matchAll(CASHTAG_RE)) {
-    const raw = match[1];
-    const norm = normalizeEntity(raw);
-    if (norm && !seen.has(norm)) {
-      entities.push({ raw: `$${raw}`, normalized: norm, category: 'token' });
-      seen.add(norm);
-    }
-  }
-
-  // 2. Hashtags
-  for (const match of allText.matchAll(HASHTAG_RE)) {
-    const raw = match[1];
-    const norm = normalizeEntity(raw);
-    if (norm && !seen.has(norm)) {
-      entities.push({ raw: `#${raw}`, normalized: norm, category: 'token' });
-      seen.add(norm);
-    }
-  }
-
-  // 3. Known meme/token lexicon
-  const lower = allText.toLowerCase();
-  const words = lower.split(/\s+/);
-  for (const word of words) {
-    const clean = word.replace(/[^a-z0-9]/g, '');
-    if (clean.length < 3 || STOP_WORDS.has(clean)) continue;
-    const norm = normalizeEntity(clean);
-    if (!norm || seen.has(norm)) continue;
-
-    let category = '';
-    if (KNOWN_MEMES.has(clean) || KNOWN_TOKEN_ALIASES[clean]) category = 'meme';
-    else if (MEME_LEXICON.has(clean)) category = 'cultural';
-
-    if (category) {
-      entities.push({ raw: clean, normalized: norm, category });
-      seen.add(norm);
-    }
-  }
-
-  // 4. Multi-word phrase detection (e.g. "italian brainrot", "dog wif hat")
-  const PHRASE_PATTERNS: Array<{ re: RegExp; norm: string; cat: string }> = [
-    { re: /\bitalian\s+brainrot\b/gi, norm: 'ITALIAN BRAINROT', cat: 'meme' },
-    { re: /\bbrain\s*rot\s+italian\b/gi, norm: 'ITALIAN BRAINROT', cat: 'meme' },
-    { re: /\bdog\s+wif\s+hat\b/gi, norm: 'WIF', cat: 'meme' },
-    { re: /\bcat\s+in\s+a\s+dogs?\s+world\b/gi, norm: 'MEW', cat: 'meme' },
-    { re: /\bbook\s+of\s+meme\b/gi, norm: 'BOME', cat: 'meme' },
-    { re: /\bpepe\s+the\s+frog\b/gi, norm: 'PEPE', cat: 'meme' },
-    { re: /\bshiba\s+inu\b/gi, norm: 'SHIBA', cat: 'meme' },
-    { re: /\bbonk\s+inu\b/gi, norm: 'BONK', cat: 'meme' },
-    { re: /\bdoge\s+coin\b/gi, norm: 'DOGE', cat: 'meme' },
-  ];
-  for (const { re, norm, cat } of PHRASE_PATTERNS) {
-    if (!seen.has(norm)) {
-      const match = allText.match(re);
-      if (match) {
-        entities.push({ raw: match[0], normalized: norm, category: cat });
-        seen.add(norm);
-      }
-    }
-  }
-
-  // 5. Proper noun detection
-  const camelWords = allText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) ?? [];
-  for (const w of camelWords) {
-    const low = w.toLowerCase();
-    if (!STOP_WORDS.has(low) && low.length >= 3) {
-      const norm = normalizeEntity(low);
-      if (norm && !seen.has(norm)) {
-        entities.push({ raw: w, normalized: norm, category: 'proper_noun' });
-        seen.add(norm);
-      }
-    }
-  }
-
-  return entities;
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// SECTION 3: CONTENT CLASSIFICATION (metadata rejection only)
-//
-// Only reject posts that are PURE template/metadata.
-// Never reject posts that contain real human discussion.
-// ══════════════════════════════════════════════════════════════════════
+const REJECT_CRYPTO_GENERIC = new Set([
+  'bitcoin','ethereum','solana','blockchain','web3','defi','nft',
+  'token','coin','dex','amm','staking','yield','farming','liquidity',
+  'pool','swap','bridge','airdrop','gas','gwei','layer 1','layer 2',
+]);
 
 const TEMPLATE_PATTERNS: RegExp[] = [
   /\b(trending|trend)\s+(on|in|now|today)\b/i,
   /\brank\s*#?\d/i,
   /\b(top|bottom)\s+(gainers?|losers?|traded|volume|coins?|tokens?|pairs?|boosted)\b/i,
   /\b24\s*h\s*(change|gain|loss|volume|move)\b/i,
-  /\b(7d|1h|30m)\s*(change|gain|loss|volume)\b/i,
   /\b(price|market)\s*(change|move|cap|pair)\b/i,
   /\b(volume|liquidity|fdv|tvl|apy|apr)\b/i,
   /\b(holders?|swaps?|transactions?)\b/i,
   /\bnew\s+(pairs?|listings?|coins?|tokens?)\b/i,
   /\b(boosted|boosting)\b/i,
-  /\bsee\s+more\b/i,
-  /\b(view|explore)\s+(more|all|details?)\b/i,
-  /\b(sign|log\s*in|log\s*out|connect|disconnect)\b/i,
-  /\b(buy|sell|swap|bridge)\s+(now|token|coin)\b/i,
-  /\b(chain|network)\s*(mainnet|testnet|devnet)\b/i,
 ];
 
-function isMetadataOnly(text: string): boolean {
-  const clean = normalizeText(text);
-  if (clean.length === 0) return true;
-  if (clean.length < 4) return true;
-  if (/^\d+(\.\d+)?%?$/.test(clean)) return true;
+// ══════════════════════════════════════════════════════════════════════
+// SECTION 3: MEME CLASSIFIER
+// ══════════════════════════════════════════════════════════════════════
+
+type PostClass = 'meme' | 'cultural' | 'rejected';
+
+const HUMOR_WORDS = new Set([
+  'lmao','lmfao','rofl','bruh','sheesh','uno reverse','this is fine',
+  'caught in 4k','dead','crying','screaming','no way','omg','wtf',
+  'based','cringe','sus','imposter','ratio','cope','seethe','mald',
+  'bussin','slaps','hits different','rent free','touch grass','goes hard',
+]);
+
+const ABSURD_ADJECTIVES = new Set([
+  'thicc','thick','buff','chonky','chonk','smol','lil','tiny',
+  'giant','massive','enormous','humongous','gigantic','colossal',
+  'cursed','blessed','unholy','feral','unhinged',
+  'crusty','dusty','musty','crispy','spicy','juicy','soggy',
+  'shiny','glowy','sparkly','fuzzy','floofy','derpy',
+  'savage','toxic','volatile','radioactive','nuclear',
+  'goofy','silly','wacky','bonkers','batty','nuts',
+  'galaxy','quantum','cyber','neon','laser','plasma','turbo','mega',
+  'ultra','hyper','super','extreme',
+]);
+
+const ANIMALS = new Set([
+  'cat','dog','frog','duck','bear','panda','penguin','shark','whale',
+  'dragon','unicorn','goat','sheep','cow','pig','chicken','turkey',
+  'horse','donkey','llama','alpaca','gorilla','monkey','ape',
+  'sloth','raccoon','otter','beaver','moose','deer','wolf','fox',
+  'lion','tiger','leopard','cheetah','crocodile','alligator','turtle',
+  'snake','lizard','gecko','chameleon','dinosaur',
+  'pigeon','crow','parrot','owl','eagle','hawk','falcon',
+  'hamster','rabbit','bunny','mouse','rat','squirrel',
+  'hedgehog','bat','dolphin','seal','walrus','koala','kangaroo',
+  'platypus','lemur',
+]);
+
+const MEME_ROLES = new Set([
+  'ceo','cto','cfo','vp','president','director','manager','intern',
+  'founder','inventor','creator','overlord','ruler','king',
+  'queen','prince','princess','duke','lord','sir',
+  'warrior','knight','wizard','witch','mage','necromancer',
+  'pirate','viking','samurai','spartan','gladiator',
+  'chef','baker','barista','janitor','bouncer',
+  'influencer','streamer','youtuber','tiktoker','memer','redditor',
+  'chad','virgin','karen',
+]);
+
+const PERSON_PREFIXES = new Set([
+  'daddy','mommy','big','little','lil','old','young','tiny','baby',
+  'grandpa','grandma','uncle','auntie','cousin',
+  'mr','mrs','miss','dr','prof','captain','general',
+  'king','queen','lord','sir','prince','princess',
+]);
+
+const FUNNY_OBJECTS = new Set([
+  'toilet','plunger','spork','nugget','cheese','pizza','taco','burrito',
+  'sushi','donut','bagel','waffle','pancake',
+  'sofa','couch','refrigerator','microwave','blender','toaster',
+  'keyboard','monitor','printer',
+  'banana','avocado','potato','tomato','onion','cactus','mushroom',
+  'blanket','pillow','slipper','sock','shoe','flip flop',
+  'diaper','pacifier',
+]);
+
+const ACTION_VERBS = new Set([
+  'dancing','singing','running','flying','swimming','eating','sleeping',
+  'fighting','dabbing','twerking','grinding','vibing','coping','seething',
+  'crying','laughing','screaming','yelling','licking','biting','punching',
+]);
+
+// ══════════════════════════════════════════════════════════════════════
+// SECTION 4: MEME CLASSIFICATION
+// ══════════════════════════════════════════════════════════════════════
+
+function classifyPost(text: string): { cls: PostClass; memeScore: number; rejectScore: number; reasons: string[] } {
+  const lower = normalizeText(text);
+  const words = lower.split(/\s+/);
+  const reasons: string[] = [];
+  let memeScore = 0;
+  let rejectScore = 0;
+
+  // Template rejection
   for (const p of TEMPLATE_PATTERNS) {
-    if (p.test(clean)) return true;
+    if (p.test(lower)) { rejectScore += 15; reasons.push('template text'); break; }
   }
-  const wordCount = clean.split(/\s+/).length;
-  if (wordCount <= 2) {
-    const metadataOnly = /^(trending|trend|rank|top|gainers|losers|volume|liquidity|market|cap|fdv|tvl|holders|swaps|transactions|price|change|24h|7d|1h|30m|boosted|new|pairs|coins|tokens|created)$/i;
-    if (metadataOnly.test(clean)) return true;
+
+  // Check rejection lists
+  for (const w of words) {
+    if (REJECT_COMPANIES.has(w)) { rejectScore += 10; reasons.push(`company: ${w}`); }
+    if (REJECT_POLITICIANS.has(w)) { rejectScore += 10; reasons.push(`politician: ${w}`); }
+    if (REJECT_FINANCE_WORDS.has(w)) { rejectScore += 8; reasons.push(`finance: ${w}`); }
+    if (REJECT_NEWS_WORDS.has(w)) { rejectScore += 8; reasons.push(`news: ${w}`); }
+    if (REJECT_COUNTRIES.has(w)) { rejectScore += 5; reasons.push(`country: ${w}`); }
+    if (REJECT_CRYPTO_GENERIC.has(w)) { rejectScore += 6; reasons.push(`crypto generic: ${w}`); }
   }
-  return false;
+
+  // Check for meme signals
+  for (const w of words) {
+    if (HUMOR_WORDS.has(w)) { memeScore += 3; }
+    if (ABSURD_ADJECTIVES.has(w)) { memeScore += 2; }
+    if (ANIMALS.has(w)) { memeScore += 2; }
+    if (MEME_ROLES.has(w)) { memeScore += 1; }
+    if (FUNNY_OBJECTS.has(w)) { memeScore += 2; }
+    if (PERSON_PREFIXES.has(w)) { memeScore += 1; }
+    if (ACTION_VERBS.has(w)) { memeScore += 2; }
+  }
+
+  // Check for known meme tokens
+  const KNOWN = ['pepe','doge','shiba','bonk','wojak','wif','popcat','brett','mog','bome','mew',
+    'brainrot','sigma','skibidi','rizz','gigachad','npc','trollface'];
+  for (const k of KNOWN) {
+    if (lower.includes(k)) { memeScore += 5; }
+  }
+
+  // Check for slang
+  const SLANG = ['ngl','tbh','fr','ong','istg','smh','no cap','deadass','lowkey','highkey'];
+  for (const s of SLANG) {
+    if (lower.includes(s)) { memeScore += 2; }
+  }
+
+  // Exclamation marks
+  const exclCount = (text.match(/!/g) ?? []).length;
+  if (exclCount >= 1) memeScore += 1;
+  if (exclCount >= 3) memeScore += 2;
+
+  // Determine class
+  if (rejectScore >= 15 && rejectScore > memeScore) {
+    return { cls: 'rejected', memeScore, rejectScore, reasons };
+  }
+  if (memeScore >= 5) return { cls: 'meme', memeScore, rejectScore, reasons };
+  if (memeScore >= 2) return { cls: 'cultural', memeScore, rejectScore, reasons };
+  return { cls: 'rejected', memeScore: 0, rejectScore, reasons: ['no meme signals'] };
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 4: ENTITY CLUSTER
+// SECTION 5: MEME CONCEPT EXTRACTION
 // ══════════════════════════════════════════════════════════════════════
 
-interface EntityCluster {
-  entity: string;
+interface MemeConcept {
+  raw: string;
+  normalized: string;
+  score: number;
+  type: 'absurd_combo' | 'funny_name' | 'catchphrase' | 'known_meme' | 'running_joke';
+}
+
+const KNOWN_MEME_TOKENS: Record<string, string> = {
+  'pepe': 'PEPE', 'pepe the frog': 'PEPE',
+  'doge': 'DOGE', 'dogecoin': 'DOGE',
+  'shiba': 'SHIBA', 'shiba inu': 'SHIBA', 'shib': 'SHIBA',
+  'bonk': 'BONK', 'wojak': 'WOJAK',
+  'wif': 'WIF', 'dog wif hat': 'WIF', 'dogwifhat': 'WIF',
+  'popcat': 'POPCAT', 'pop cat': 'POPCAT',
+  'brett': 'BRETT', 'brett on base': 'BRETT',
+  'mog': 'MOG', 'bome': 'BOME', 'book of meme': 'BOME',
+  'mew': 'MEW', 'cat in a dogs world': 'MEW',
+  'italian brainrot': 'ITALIAN BRAINROT', 'italian brain rot': 'ITALIAN BRAINROT',
+  'brainrot': 'BRAINROT', 'brain rot': 'BRAINROT',
+  'sigma': 'SIGMA', 'skibidi': 'SKIBIDI', 'rizz': 'RIZZ',
+  'gigachad': 'GIGACHAD', 'npc': 'NPC', 'trollface': 'TROLLFACE',
+};
+
+function normalizeConcept(raw: string): string {
+  return raw.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
+}
+
+function conceptKey(raw: string): string {
+  return normalizeConcept(raw).split(/\s+/).sort().join(' ');
+}
+
+function extractMemeConcepts(title: string, body: string): MemeConcept[] {
+  const allText = `${title} ${body}`;
+  const lower = allText.toLowerCase();
+  const words = lower.split(/\s+/).map((w) => w.replace(/[^a-z0-9]/g, '')).filter((w) => w.length >= 2);
+  const concepts: MemeConcept[] = [];
+  const seenKeys = new Set<string>();
+
+  function addConcept(raw: string, score: number, type: MemeConcept['type']) {
+    const normalized = normalizeConcept(raw).toUpperCase();
+    const key = normalized.split(/\s+/).sort().join(' ');
+    if (seenKeys.has(key) || normalized.length < 3) return;
+    seenKeys.add(key);
+    concepts.push({ raw, normalized, score, type });
+  }
+
+  // 1. Known meme tokens
+  for (const [key, norm] of Object.entries(KNOWN_MEME_TOKENS)) {
+    if (lower.includes(key)) {
+      addConcept(key, 20, 'known_meme');
+    }
+  }
+
+  // 2. Absurd 2-word combos: [adj] [animal/object/role]
+  for (let i = 0; i < words.length - 1; i++) {
+    const w1 = words[i];
+    const w2 = words[i + 1];
+    if (ABSURD_ADJECTIVES.has(w1) && (ANIMALS.has(w2) || FUNNY_OBJECTS.has(w2) || MEME_ROLES.has(w2))) {
+      addConcept(`${w1} ${w2}`, 15, 'absurd_combo');
+    }
+    if (PERSON_PREFIXES.has(w1) && (ANIMALS.has(w2) || FUNNY_OBJECTS.has(w2) || MEME_ROLES.has(w2))) {
+      addConcept(`${w1} ${w2}`, 15, 'funny_name');
+    }
+    if (ACTION_VERBS.has(w1) && (ANIMALS.has(w2) || FUNNY_OBJECTS.has(w2) || MEME_ROLES.has(w2))) {
+      addConcept(`${w1} ${w2}`, 12, 'absurd_combo');
+    }
+  }
+
+  // 3. Absurd 3-word combos
+  for (let i = 0; i < words.length - 2; i++) {
+    const w1 = words[i];
+    const w2 = words[i + 1];
+    const w3 = words[i + 2];
+    const nounOk = ANIMALS.has(w3) || FUNNY_OBJECTS.has(w3) || MEME_ROLES.has(w3);
+
+    // [prefix] [adj] [noun]
+    if (PERSON_PREFIXES.has(w1) && ABSURD_ADJECTIVES.has(w2) && nounOk) {
+      addConcept(`${w1} ${w2} ${w3}`, 18, 'absurd_combo');
+    }
+    // [adj] [adj] [noun]
+    if (ABSURD_ADJECTIVES.has(w1) && ABSURD_ADJECTIVES.has(w2) && nounOk) {
+      addConcept(`${w1} ${w2} ${w3}`, 16, 'absurd_combo');
+    }
+    // [verb] [adj] [noun]
+    if (ACTION_VERBS.has(w1) && ABSURD_ADJECTIVES.has(w2) && nounOk) {
+      addConcept(`${w1} ${w2} ${w3}`, 14, 'absurd_combo');
+    }
+    // [verb] [noun] [noun]
+    if (ACTION_VERBS.has(w1) && (ANIMALS.has(w2) || FUNNY_OBJECTS.has(w2)) && nounOk) {
+      addConcept(`${w1} ${w2} ${w3}`, 13, 'absurd_combo');
+    }
+  }
+
+  // 4. Hashtag concepts
+  const HASHTAG_RE = /#([A-Za-z0-9_]{2,30})\b/g;
+  for (const m of allText.matchAll(HASHTAG_RE)) {
+    const tag = m[1].toLowerCase();
+    const tagWords = tag.split(/[_\s]+/);
+    let hasMemeWord = false;
+    for (const tw of tagWords) {
+      if (ABSURD_ADJECTIVES.has(tw) || ANIMALS.has(tw) || FUNNY_OBJECTS.has(tw) || MEME_ROLES.has(tw) || PERSON_PREFIXES.has(tw) || ACTION_VERBS.has(tw)) {
+        hasMemeWord = true;
+        break;
+      }
+    }
+    if (hasMemeWord) {
+      addConcept(tag.replace(/_/g, ' '), 10, 'running_joke');
+    }
+  }
+
+  // 5. Capitalized phrases (likely proper nouns / titles)
+  const CAP_PHRASES = allText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
+  for (const phrase of CAP_PHRASES) {
+    const lowPhrase = phrase.toLowerCase();
+    const phraseWords = lowPhrase.split(/\s+/);
+    let hasMemeWord = false;
+    for (const pw of phraseWords) {
+      if (ABSURD_ADJECTIVES.has(pw) || ANIMALS.has(pw) || FUNNY_OBJECTS.has(pw) || MEME_ROLES.has(pw) || PERSON_PREFIXES.has(pw)) {
+        hasMemeWord = true;
+        break;
+      }
+    }
+    if (hasMemeWord && phraseWords.length >= 2 && phraseWords.length <= 5) {
+      addConcept(lowPhrase, 10, 'catchphrase');
+    }
+  }
+
+  // 6. Detect [number] [unit] [animal] patterns like "40 pound tabby cat"
+  const NUM_PATTERN = /(\d+)\s+(pound|lb|kg|inch|foot|feet|year|month|week|day|hour|minute)\s+(\w+)/gi;
+  for (const m of allText.matchAll(NUM_PATTERN)) {
+    const animalWord = m[3].toLowerCase();
+    if (ANIMALS.has(animalWord) || MEME_ROLES.has(animalWord)) {
+      addConcept(`${m[1]} ${m[2]} ${animalWord}`, 12, 'absurd_combo');
+    }
+  }
+
+  return concepts.sort((a, b) => b.score - a.score);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// SECTION 6: CONCEPT CLUSTER
+// ══════════════════════════════════════════════════════════════════════
+
+interface ConceptCluster {
+  concept: string;
   aliases: Set<string>;
   posts: RawPost[];
   firstSeen: number;
@@ -242,31 +392,29 @@ interface EntityCluster {
   authors: Set<string>;
   sources: Set<string>;
   humanAuthors: Set<string>;
-  socialSources: Set<string>;
-  marketSources: Set<string>;
   totalMentions: number;
   totalEngagement: number;
-  entityCategory: string;
-  relatedEntities: Set<string>;
+  conceptType: MemeConcept['type'];
+  relatedConcepts: Set<string>;
+  memeScore: number;
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 5: BUILD ENTITY CLUSTERS
+// SECTION 7: BUILD CONCEPT CLUSTERS
 // ══════════════════════════════════════════════════════════════════════
 
 interface ExtractionStats {
   totalPosts: number;
-  postsWithEntities: number;
-  postsWithoutEntities: number;
-  totalEntitiesExtracted: number;
-  uniqueEntities: number;
-  entitiesByCategory: Record<string, number>;
-  rejectedMetadata: number;
-  extractedEntities: { post: string; entities: ExtractedEntity[] }[];
+  classifiedAsMeme: number;
+  classifiedAsCultural: number;
+  classifiedAsRejected: number;
+  conceptsExtracted: number;
+  uniqueConcepts: number;
+  conceptsByType: Record<string, number>;
 }
 
-function buildEntityClusters(posts: RawPost[]): {
-  clusters: Map<string, EntityCluster>;
+function buildConceptClusters(posts: RawPost[]): {
+  clusters: Map<string, ConceptCluster>;
   stats: ExtractionStats;
   rejectedPosts: { post: string; reason: string }[];
 } {
@@ -274,126 +422,116 @@ function buildEntityClusters(posts: RawPost[]): {
   const WINDOW = 24 * 3600 * 1000;
   const recent = posts.filter((p) => now - p.timestamp <= WINDOW);
 
-  const clusterMap = new Map<string, EntityCluster>();
+  const clusterMap = new Map<string, ConceptCluster>();
   const stats: ExtractionStats = {
     totalPosts: recent.length,
-    postsWithEntities: 0,
-    postsWithoutEntities: 0,
-    totalEntitiesExtracted: 0,
-    uniqueEntities: 0,
-    entitiesByCategory: {},
-    rejectedMetadata: 0,
-    extractedEntities: [],
+    classifiedAsMeme: 0,
+    classifiedAsCultural: 0,
+    classifiedAsRejected: 0,
+    conceptsExtracted: 0,
+    uniqueConcepts: 0,
+    conceptsByType: {},
   };
   const rejectedPosts: { post: string; reason: string }[] = [];
 
   for (const post of recent) {
     const allText = `${post.title} ${post.body}`;
-    if (isMetadataOnly(allText)) {
-      stats.rejectedMetadata++;
-      rejectedPosts.push({ post: `${post.title}`, reason: 'metadata/template' });
+
+    // Stage 1: Classify the post
+    const classification = classifyPost(allText);
+    if (classification.cls === 'rejected') {
+      stats.classifiedAsRejected++;
+      rejectedPosts.push({ post: post.title, reason: classification.reasons.join('; ') || 'no meme signals' });
       continue;
     }
 
-    const entities = extractEntitiesFromPost(post.title, post.body);
-    if (entities.length === 0) {
-      stats.postsWithoutEntities++;
+    if (classification.cls === 'meme') stats.classifiedAsMeme++;
+    else stats.classifiedAsCultural++;
+
+    // Stage 2: Extract meme concepts
+    const concepts = extractMemeConcepts(post.title, post.body);
+    if (concepts.length === 0) {
+      stats.classifiedAsRejected++;
+      rejectedPosts.push({ post: post.title, reason: 'no meme concepts extracted' });
       continue;
     }
 
-    stats.postsWithEntities++;
-    stats.totalEntitiesExtracted += entities.length;
-    stats.extractedEntities.push({
-      post: post.title.slice(0, 60),
-      entities: entities.map((e) => ({ raw: e.raw, normalized: e.normalized, category: e.category })),
-    });
+    stats.conceptsExtracted += concepts.length;
 
-    for (const e of entities) {
-      stats.entitiesByCategory[e.category] = (stats.entitiesByCategory[e.category] ?? 0) + 1;
+    // Stage 3: Assign post to best concept cluster
+    const bestConcept = concepts[0];
+    const key = normalizeConcept(bestConcept.normalized);
+
+    let cluster = clusterMap.get(key);
+    if (!cluster) {
+      cluster = {
+        concept: bestConcept.normalized,
+        aliases: new Set(),
+        posts: [],
+        firstSeen: post.timestamp,
+        lastSeen: post.timestamp,
+        authors: new Set(),
+        sources: new Set(),
+        humanAuthors: new Set(),
+        totalMentions: 0,
+        totalEngagement: 0,
+        conceptType: bestConcept.type,
+        relatedConcepts: new Set(),
+        memeScore: 0,
+      };
+      clusterMap.set(key, cluster);
     }
 
-    const postEntityKeys = entities.map((e) => e.normalized);
+    cluster.aliases.add(bestConcept.raw);
+    cluster.posts.push(post);
+    cluster.authors.add(post.author);
+    cluster.sources.add(post.source);
+    if (post.providerCategory === 'social') cluster.humanAuthors.add(post.author);
+    cluster.totalMentions += 1;
+    cluster.totalEngagement += post.likes + post.shares * 2 + post.comments;
+    cluster.firstSeen = Math.min(cluster.firstSeen, post.timestamp);
+    cluster.lastSeen = Math.max(cluster.lastSeen, post.timestamp);
+    cluster.memeScore += classification.memeScore;
 
-    for (const entity of entities) {
-      const key = entity.normalized;
-      if (!key) continue;
-
-      let cluster = clusterMap.get(key);
-      if (!cluster) {
-        cluster = {
-          entity: key,
-          aliases: new Set(),
-          posts: [],
-          firstSeen: post.timestamp,
-          lastSeen: post.timestamp,
-          authors: new Set(),
-          sources: new Set(),
-          humanAuthors: new Set(),
-          socialSources: new Set(),
-          marketSources: new Set(),
-          totalMentions: 0,
-          totalEngagement: 0,
-          entityCategory: entity.category,
-          relatedEntities: new Set(),
-        };
-        clusterMap.set(key, cluster);
-      }
-
-      cluster.aliases.add(entity.raw);
-      cluster.posts.push(post);
-      cluster.authors.add(post.author);
-      cluster.sources.add(post.source);
-      if (post.providerCategory === 'social') {
-        cluster.humanAuthors.add(post.author);
-        cluster.socialSources.add(post.source);
-      } else {
-        cluster.marketSources.add(post.source);
-      }
-      cluster.totalMentions += 1;
-      cluster.totalEngagement += post.likes + post.shares * 2 + post.comments;
-      cluster.firstSeen = Math.min(cluster.firstSeen, post.timestamp);
-      cluster.lastSeen = Math.max(cluster.lastSeen, post.timestamp);
-
-      for (const otherKey of postEntityKeys) {
-        if (otherKey !== key) cluster.relatedEntities.add(otherKey);
-      }
+    // Track related concepts from same post
+    for (const c of concepts) {
+      const cKey = normalizeConcept(c.normalized);
+      if (cKey !== key) cluster.relatedConcepts.add(c.normalized);
+      stats.conceptsByType[c.type] = (stats.conceptsByType[c.type] ?? 0) + 1;
     }
+
+    stats.uniqueConcepts = clusterMap.size;
   }
 
-  stats.uniqueEntities = clusterMap.size;
   return { clusters: clusterMap, stats, rejectedPosts };
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 6: ALIAS MERGING
+// SECTION 8: ALIAS MERGING
 // ══════════════════════════════════════════════════════════════════════
 
-function mergeAliasClusters(clusters: Map<string, EntityCluster>): Map<string, EntityCluster> {
-  const ALIAS_OVERRIDES: Record<string, string> = {
-    'SHIB': 'SHIBA',
-  };
-
-  const merged = new Map<string, EntityCluster>();
+function mergeAliases(clusters: Map<string, ConceptCluster>): Map<string, ConceptCluster> {
+  const ALIASES: Record<string, string> = { 'SHIB': 'SHIBA' };
+  const merged = new Map<string, ConceptCluster>();
   const mergedAway = new Set<string>();
 
   for (const [key, cluster] of clusters) {
     if (mergedAway.has(key)) continue;
-    const targetKey = ALIAS_OVERRIDES[key] ?? key;
+    const targetKey = ALIASES[key] ?? key;
     if (targetKey !== key) {
       const target = merged.get(targetKey) ?? clusters.get(targetKey);
       if (target && target !== cluster) {
-        for (const alias of cluster.aliases) target.aliases.add(alias);
+        for (const a of cluster.aliases) target.aliases.add(a);
         target.posts.push(...cluster.posts);
         for (const a of cluster.authors) target.authors.add(a);
         for (const s of cluster.sources) target.sources.add(s);
         for (const a of cluster.humanAuthors) target.humanAuthors.add(a);
-        for (const s of cluster.socialSources) target.socialSources.add(s);
-        for (const s of cluster.marketSources) target.marketSources.add(s);
-        for (const e of cluster.relatedEntities) target.relatedEntities.add(e);
+        for (const c of cluster.relatedConcepts) target.relatedConcepts.add(c);
         target.totalMentions += cluster.totalMentions;
         target.totalEngagement += cluster.totalEngagement;
         target.firstSeen = Math.min(target.firstSeen, cluster.firstSeen);
         target.lastSeen = Math.max(target.lastSeen, cluster.lastSeen);
+        target.memeScore += cluster.memeScore;
         mergedAway.add(key);
         continue;
       }
@@ -404,12 +542,10 @@ function mergeAliasClusters(clusters: Map<string, EntityCluster>): Map<string, E
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 7: SCORING — LAUNCH OPPORTUNITY
-//
-// Every score answers: "How likely is this meme to succeed as a token?"
+// SECTION 9: SCORING — LAUNCH OPPORTUNITY
 // ══════════════════════════════════════════════════════════════════════
 
-function computeGrowthPct(cluster: EntityCluster, now: number): number {
+function computeGrowthPct(cluster: ConceptCluster, now: number): number {
   const half = 12 * 3600 * 1000;
   const recent = cluster.posts.filter((p) => now - p.timestamp <= half).length;
   const older = cluster.posts.length - recent;
@@ -417,219 +553,177 @@ function computeGrowthPct(cluster: EntityCluster, now: number): number {
   return Math.round(((recent - older) / older) * 100);
 }
 
-function computeVelocity(cluster: EntityCluster): number {
+function computeVelocity(cluster: ConceptCluster): number {
   const spanHours = Math.max((cluster.lastSeen - cluster.firstSeen) / 3600000, 0.5);
   return cluster.totalMentions / spanHours;
 }
 
-function computeMomentum(cluster: EntityCluster, now: number): number {
+function computeMomentum(cluster: ConceptCluster, now: number): number {
   const recent = cluster.posts.filter((p) => now - p.timestamp <= 6 * 3600 * 1000).length;
   const older = cluster.posts.filter((p) => now - p.timestamp > 6 * 3600 * 1000 && now - p.timestamp <= 12 * 3600 * 1000).length;
   if (older === 0) return recent > 0 ? 80 : 20;
-  const ratio = recent / older;
-  return Math.min(Math.round(ratio * 40), 100);
+  return Math.min(Math.round((recent / older) * 40), 100);
 }
 
-function computeViralityScore(cluster: EntityCluster, now: number): number {
+function computeVirality(cluster: ConceptCluster, now: number): number {
   const velocity = computeVelocity(cluster);
   const growth = computeGrowthPct(cluster, now);
-  const velocityScore = Math.min(velocity / 5, 1) * 40;
-  const growthScore = Math.min(Math.max(growth, 0) / 200, 1) * 30;
-  const authorSpread = Math.min(cluster.humanAuthors.size / 15, 1) * 20;
-  const platformSpread = Math.min(cluster.socialSources.size / 3, 1) * 10;
-  return Math.round(velocityScore + growthScore + authorSpread + platformSpread);
+  return Math.min(100, Math.round(
+    Math.min(velocity / 5, 1) * 40 +
+    Math.min(Math.max(growth, 0) / 200, 1) * 30 +
+    Math.min(cluster.humanAuthors.size / 15, 1) * 20 +
+    Math.min(cluster.sources.size / 3, 1) * 10
+  ));
 }
 
-function computeMemeStrength(cluster: EntityCluster): number {
+function computeMemeStrength(cluster: ConceptCluster): number {
   let score = 0;
-  const categoryBonuses: Record<string, number> = {
-    meme: 30, cultural: 20, token: 15, proper_noun: 5,
+  // Concept type bonus
+  const TYPE_BONUS: Record<string, number> = {
+    absurd_combo: 30, funny_name: 25, known_meme: 20,
+    catchphrase: 15, running_joke: 15,
   };
-  score += categoryBonuses[cluster.entityCategory] ?? 5;
+  score += TYPE_BONUS[cluster.conceptType] ?? 10;
+  // Multiple aliases = more people describing it differently = stronger meme
   score += Math.min(cluster.aliases.size * 3, 15);
-  score += Math.min(cluster.relatedEntities.size * 2, 10);
-  const socialPosts = cluster.posts.filter((p) => p.providerCategory === 'social');
-  let emotionalHits = 0;
-  const EMOTIONAL = new Set(['love','hate','crazy','insane','wild','epic','best','worst','amazing','fire','goat','unreal','sheesh','bruh','ngl','fr','istg']);
-  for (const post of socialPosts.slice(0, 20)) {
-    const words = `${post.title} ${post.body}`.toLowerCase().split(/\s+/);
-    for (const w of words) { if (EMOTIONAL.has(w.replace(/[^a-z]/g, ''))) emotionalHits++; }
-  }
-  score += Math.min(Math.round((emotionalHits / Math.max(socialPosts.length, 1)) * 20), 15);
-  const SHORT_NAME_BONUS = cluster.entity.length <= 6 ? 10 : cluster.entity.length <= 10 ? 5 : 0;
-  score += SHORT_NAME_BONUS;
+  // Average meme score from classification
+  score += Math.min(Math.round(cluster.memeScore / Math.max(cluster.posts.length, 1)), 15);
+  // Short catchy name bonus
+  if (cluster.concept.length <= 12) score += 10;
+  else if (cluster.concept.length <= 20) score += 5;
   return Math.min(score, 100);
 }
 
-function computeCommunityDiversity(cluster: EntityCluster): number {
-  const authorScore = Math.min(cluster.humanAuthors.size / 20, 1) * 40;
-  const sourceScore = Math.min(cluster.socialSources.size / 3, 1) * 30;
-  const crossPlatformBonus = cluster.socialSources.size >= 2 ? 15 : cluster.socialSources.size >= 1 ? 5 : 0;
-  const mentionScore = Math.min(cluster.totalMentions / 30, 1) * 15;
-  return Math.round(authorScore + sourceScore + crossPlatformBonus + mentionScore);
+function computeCommunityDiversity(cluster: ConceptCluster): number {
+  return Math.min(100, Math.round(
+    Math.min(cluster.humanAuthors.size / 20, 1) * 40 +
+    Math.min(cluster.sources.size / 3, 1) * 30 +
+    Math.min(cluster.totalMentions / 30, 1) * 20 +
+    (cluster.sources.size >= 2 ? 10 : 0)
+  ));
 }
 
-function computeCrossPlatformSpread(cluster: EntityCluster): number {
-  const totalPlatforms = cluster.sources.size;
-  return Math.min(Math.round((totalPlatforms / 4) * 100), 100);
+function computeCrossPlatform(cluster: ConceptCluster): number {
+  return Math.min(100, Math.round((cluster.sources.size / 4) * 100));
 }
 
-function computeOriginalityScore(cluster: EntityCluster): number {
-  const ENTITY_EXISTS_PENALTY: Record<string, number> = {
-    PEPE: 90, DOGE: 95, SHIBA: 85, BONK: 60, WIF: 50,
-    BRETT: 40, POPCAT: 45, MOG: 35, BOME: 30, WOJAK: 70,
-  };
-  const existingPenalty = ENTITY_EXISTS_PENALTY[cluster.entity] ?? 0;
-  const baseScore = 100 - existingPenalty;
-  const aliasNovelty = Math.min(cluster.aliases.size * 2, 10);
-  const coEntityBonus = Math.min(cluster.relatedEntities.size * 3, 15);
-  return Math.min(Math.round(baseScore + aliasNovelty + coEntityBonus), 100);
-}
-
-function computeImagePotential(cluster: EntityCluster): number {
-  const VISUAL_CATEGORIES = new Set(['PEPE','DOGE','SHIBA','BONK','WIF','POPCAT','BRETT','MOG','BOME','MEW','WOJAK']);
-  if (VISUAL_CATEGORIES.has(cluster.entity)) return 85;
-  const visualWords = ['cat','dog','frog','bear','panda','penguin','shark','whale','dragon','unicorn','mario','pikachu','spongebob'];
-  for (const w of visualWords) { if (cluster.entity.toLowerCase().includes(w)) return 75; }
-  if (cluster.entityCategory === 'meme') return 70;
-  if (cluster.entityCategory === 'cultural') return 60;
-  return 40;
-}
-
-function computeBrandability(cluster: EntityCluster): number {
-  let score = 50;
-  if (cluster.entity.length <= 6) score += 20;
-  else if (cluster.entity.length <= 10) score += 10;
-  if (/^[A-Z]+$/.test(cluster.entity)) score += 10;
-  if (cluster.aliases.size >= 3) score += 10;
-  if (cluster.entityCategory === 'meme') score += 10;
+function computeOriginality(cluster: ConceptCluster): number {
+  const KNOWN_OVERSATURATED = new Set(['PEPE','DOGE','SHIBA','BONK','WOJAK']);
+  if (KNOWN_OVERSATURATED.has(cluster.concept)) return 10;
+  // Unknown concept = high originality
+  let score = 70;
+  if (cluster.conceptType === 'absurd_combo') score += 20;
+  if (cluster.conceptType === 'funny_name') score += 15;
+  if (cluster.conceptType === 'catchphrase') score += 10;
+  if (cluster.relatedConcepts.size > 0) score += 10;
   return Math.min(score, 100);
 }
 
-function computeTickerQuality(cluster: EntityCluster): number {
-  const name = cluster.entity;
-  if (name.length <= 4) return 95;
-  if (name.length <= 6) return 80;
-  if (name.length <= 8) return 65;
+function computeImagePotential(cluster: ConceptCluster): number {
+  const conceptLower = cluster.concept.toLowerCase();
+  for (const a of ANIMALS) { if (conceptLower.includes(a)) return 90; }
+  for (const o of FUNNY_OBJECTS) { if (conceptLower.includes(o)) return 80; }
+  for (const r of MEME_ROLES) { if (conceptLower.includes(r)) return 70; }
+  if (cluster.conceptType === 'absurd_combo') return 75;
+  if (cluster.conceptType === 'funny_name') return 65;
   return 50;
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// SECTION 8: COMPETITION ANALYSIS
-//
-// Checks if tokens already exist for this narrative.
-// This is critical for launch decisions.
-// ══════════════════════════════════════════════════════════════════════
+function computeBrandability(cluster: ConceptCluster): number {
+  let score = 50;
+  const words = cluster.concept.split(/\s+/);
+  if (words.length <= 2) score += 20;
+  else if (words.length <= 3) score += 10;
+  if (cluster.concept.length <= 12) score += 15;
+  if (cluster.conceptType === 'funny_name') score += 10;
+  return Math.min(score, 100);
+}
 
-const KNOWN_EXISTING_TOKENS: Record<string, { count: number; successful: number; dead: number }> = {
-  'PEPE': { count: 18000, successful: 5, dead: 17000 },
-  'DOGE': { count: 1, successful: 1, dead: 0 },
-  'SHIBA': { count: 500, successful: 2, dead: 480 },
-  'BONK': { count: 200, successful: 3, dead: 180 },
-  'WIF': { count: 150, successful: 2, dead: 130 },
-  'BRETT': { count: 80, successful: 1, dead: 70 },
-  'POPCAT': { count: 100, successful: 1, dead: 90 },
-  'MOG': { count: 60, successful: 1, dead: 50 },
-  'BOME': { count: 90, successful: 1, dead: 80 },
-  'WOJAK': { count: 300, successful: 2, dead: 280 },
-  'MEW': { count: 70, successful: 1, dead: 60 },
-};
+function computeTickerQuality(cluster: ConceptCluster): number {
+  const words = cluster.concept.split(/\s+/);
+  const ticker = words.map((w) => w[0]).join('').toUpperCase().slice(0, 6);
+  if (ticker.length <= 4) return 95;
+  if (ticker.length <= 6) return 80;
+  return 60;
+}
 
-function computeCompetition(cluster: EntityCluster): CompetitionData {
-  const existing = KNOWN_EXISTING_TOKENS[cluster.entity];
+function computeCompetition(cluster: ConceptCluster): CompetitionData {
+  const KNOWN: Record<string, { count: number; successful: number; dead: number }> = {
+    'PEPE': { count: 18000, successful: 5, dead: 17000 },
+    'DOGE': { count: 1, successful: 1, dead: 0 },
+    'SHIBA': { count: 500, successful: 2, dead: 480 },
+    'BONK': { count: 200, successful: 3, dead: 180 },
+    'WOJAK': { count: 300, successful: 2, dead: 280 },
+  };
 
+  const existing = KNOWN[cluster.concept];
   if (existing) {
     const saturation: CompetitionData['saturation'] =
       existing.count > 5000 ? 'saturated' :
       existing.count > 1000 ? 'high' :
-      existing.count > 100 ? 'medium' :
-      existing.count > 10 ? 'low' : 'none';
-
+      existing.count > 100 ? 'medium' : 'low';
     const recommendation: CompetitionData['recommendation'] =
       saturation === 'saturated' ? 'do_not_launch' :
       saturation === 'high' ? 'do_not_launch' :
-      saturation === 'medium' ? 'wait' :
-      existing.successful <= 2 ? 'launch_soon' : 'launch_immediately';
-
+      saturation === 'medium' ? 'wait' : 'launch_soon';
     return {
-      existingTokens: existing.count,
-      deadTokens: existing.dead,
-      successfulTokens: existing.successful,
-      copies: existing.count - existing.dead - existing.successful,
-      forks: Math.floor(existing.count * 0.3),
-      saturation,
-      recommendation,
-      recommendationReason: saturation === 'saturated'
-        ? `${existing.count} tokens already exist — market is saturated`
-        : saturation === 'high'
-        ? `${existing.count} tokens exist — too much competition`
-        : `${existing.count} tokens exist but ${existing.dead} are dead — window may be open`,
+      existingTokens: existing.count, deadTokens: existing.dead,
+      successfulTokens: existing.successful, copies: existing.count - existing.dead,
+      forks: Math.floor(existing.count * 0.3), saturation, recommendation,
+      recommendationReason: `${existing.count} tokens already exist — ${existing.dead} are dead`,
     };
   }
 
-  // Unknown narrative — likely no tokens yet
+  // Novel concept = no competition
   return {
-    existingTokens: 0,
-    deadTokens: 0,
-    successfulTokens: 0,
-    copies: 0,
-    forks: 0,
-    saturation: 'none',
+    existingTokens: 0, deadTokens: 0, successfulTokens: 0,
+    copies: 0, forks: 0, saturation: 'none',
     recommendation: 'launch_immediately',
-    recommendationReason: 'No existing Solana token found — first mover advantage available',
+    recommendationReason: 'No existing token found — first mover advantage available',
   };
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// SECTION 9: LAUNCH SCORE COMPUTATION
-// ══════════════════════════════════════════════════════════════════════
-
-function computeLaunchScore(cluster: EntityCluster, now: number): {
-  launchScore: number;
-  viralityScore: number;
-  memeStrength: number;
-  growthVelocity: number;
-  communityDiversity: number;
-  crossPlatformSpread: number;
-  originalityScore: number;
-  imagePotential: number;
-  brandability: number;
-  mascotPotential: number;
-  tickerQuality: number;
-  launchProbability: number;
+function computeLaunchScore(cluster: ConceptCluster, now: number): {
+  launchScore: number; viralityScore: number; memeStrength: number;
+  growthVelocity: number; communityDiversity: number; crossPlatformSpread: number;
+  originalityScore: number; imagePotential: number; brandability: number;
+  mascotPotential: number; tickerQuality: number; launchProbability: number;
   momentum: number;
 } {
-  const viralityScore = computeViralityScore(cluster, now);
+  const viralityScore = computeVirality(cluster, now);
   const memeStrength = computeMemeStrength(cluster);
-  const growthVelocity = Math.min(Math.round(computeGrowthPct(cluster, now) / 3), 100);
+  const growthVelocity = Math.min(100, Math.round(computeGrowthPct(cluster, now) / 3));
   const communityDiversity = computeCommunityDiversity(cluster);
-  const crossPlatformSpread = computeCrossPlatformSpread(cluster);
-  const originalityScore = computeOriginalityScore(cluster);
+  const crossPlatformSpread = computeCrossPlatform(cluster);
+  const originalityScore = computeOriginality(cluster);
   const imagePotential = computeImagePotential(cluster);
   const brandability = computeBrandability(cluster);
   const mascotPotential = Math.round((imagePotential + brandability) / 2);
   const tickerQuality = computeTickerQuality(cluster);
   const momentum = computeMomentum(cluster, now);
-
   const competition = computeCompetition(cluster);
+
   const competitionPenalty =
     competition.saturation === 'saturated' ? 40 :
     competition.saturation === 'high' ? 25 :
     competition.saturation === 'medium' ? 10 : 0;
 
   const raw =
+    memeStrength * 0.25 +
     viralityScore * 0.20 +
-    memeStrength * 0.15 +
-    growthVelocity * 0.15 +
+    originalityScore * 0.15 +
     communityDiversity * 0.15 +
     crossPlatformSpread * 0.10 +
-    originalityScore * 0.10 +
     imagePotential * 0.05 +
     brandability * 0.05 +
     momentum * 0.05;
 
   const launchScore = Math.max(0, Math.min(Math.round(raw - competitionPenalty), 100));
-  const launchProbability = Math.max(0, Math.min(Math.round(launchScore * (competition.recommendation === 'launch_immediately' ? 1.0 : competition.recommendation === 'launch_soon' ? 0.8 : competition.recommendation === 'wait' ? 0.4 : 0.1)), 100));
+  const launchProbability = Math.max(0, Math.min(Math.round(
+    launchScore * (competition.recommendation === 'launch_immediately' ? 1.0 :
+      competition.recommendation === 'launch_soon' ? 0.8 :
+      competition.recommendation === 'wait' ? 0.4 : 0.1)
+  ), 100));
 
   return {
     launchScore, viralityScore, memeStrength, growthVelocity,
@@ -645,179 +739,81 @@ function computeLaunchScore(cluster: EntityCluster, now: number): {
 
 const MAX_OPPORTUNITIES = 15;
 
-const BLOCKED_NAMES = new Set([
-  'crypto','blockchain','web3','defi','nft','token','coin','dex','amm',
-  'staking','yield','farming','liquidity','pool','swap','bridge','mint',
-  'burn','airdrop','faucet','gas','gwei','wei','lamports','sol','usdc',
-  'usdt','dai','eth','btc','ada','dot','avax','matic','link','uni',
-  'trending','trend','gainers','losers','volume','liquidity','market',
-  'cap','fdv','tvl','holders','swaps','transactions','price','change',
-  '24h','7d','1h','30m','boosted','new','pairs','coins','tokens',
-  'rank','top','bottom','best','worst','first','last','next','prev',
-  'general','random','stuff','things','something','anything','nothing',
-  'update','news','breaking','alert','warning','notice','info','data',
-  'result','results','list','item','entry','number','status','system',
-  'reddit','bluesky','twitter','telegram','discord','youtube','tiktok',
-  'coingecko','dexscreener','github','hackernews','hacker news',
+const BLOCKED_CONCEPTS = new Set([
+  'crypto','blockchain','web3','defi','nft','token','coin','dex',
+  'trending','gainers','losers','volume','liquidity','market','cap',
+  'rank','top','bottom','general','random','stuff','things',
+  'reddit','bluesky','twitter','telegram','discord','youtube',
+  'coingecko','dexscreener','github','hackernews',
 ]);
-
-const BLOCKED_PATTERNS: RegExp[] = [
-  /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
-  /^(0x)?[0-9a-f]{8,}$/i,
-];
 
 interface Thresholds {
   minAuthors: number;
   minMentions: number;
-  minPlatforms: number;
   minEngagement: number;
 }
 
-function computeAdaptiveThresholds(posts: RawPost[], totalSocialSources: Set<string>): Thresholds {
-  const postCount = posts.length;
-  const socialSourceCount = totalSocialSources.size;
-
-  let minAuthors: number;
-  let minMentions: number;
-  let minPlatforms: number;
-  let minEngagement: number;
-
-  if (postCount < 30) {
-    minAuthors = 1; minMentions = 2; minPlatforms = 1; minEngagement = 5;
-  } else if (postCount < 100) {
-    minAuthors = 2; minMentions = 2; minPlatforms = 1; minEngagement = 10;
-  } else if (postCount < 500) {
-    minAuthors = 2; minMentions = 3; minPlatforms = 2; minEngagement = 15;
-  } else {
-    minAuthors = 3; minMentions = 5; minPlatforms = 2; minEngagement = 20;
-  }
-
-  if (socialSourceCount < 2) minPlatforms = 1;
-  if (socialSourceCount < 3) minPlatforms = Math.min(minPlatforms, 1);
-
-  return { minAuthors, minMentions, minPlatforms, minEngagement };
+function computeThresholds(posts: RawPost[]): Thresholds {
+  const n = posts.length;
+  if (n < 30) return { minAuthors: 1, minMentions: 1, minEngagement: 0 };
+  if (n < 100) return { minAuthors: 1, minMentions: 2, minEngagement: 5 };
+  if (n < 500) return { minAuthors: 2, minMentions: 2, minEngagement: 10 };
+  return { minAuthors: 2, minMentions: 3, minEngagement: 15 };
 }
 
-function checkRejection(cluster: EntityCluster, now: number, thresholds: Thresholds, totalSocialSources: Set<string>): { rejected: boolean; reason: string } {
-  // Adaptive platform rule
-  if (cluster.socialSources.size < thresholds.minPlatforms) {
-    if (totalSocialSources.size >= 2) {
-      return { rejected: true, reason: `only ${cluster.socialSources.size} social platform(s) — need ${thresholds.minPlatforms}+` };
-    } else {
-      const effectiveAuthors = cluster.marketSources.size > 0
-        ? Math.max(cluster.humanAuthors.size, cluster.relatedEntities.size, Math.ceil(cluster.totalMentions / 2))
-        : cluster.humanAuthors.size;
-      if (effectiveAuthors < 20 || cluster.totalMentions < 30 || cluster.totalEngagement < thresholds.minEngagement) {
-        return { rejected: true, reason: `insufficient fallback signals (authors: ${effectiveAuthors}, posts: ${cluster.totalMentions}, engagement: ${cluster.totalEngagement})` };
-      }
-    }
+function checkRejection(cluster: ConceptCluster, thresholds: Thresholds): { rejected: boolean; reason: string } {
+  if (!cluster.concept || cluster.concept.length < 3) {
+    return { rejected: true, reason: 'concept too short' };
   }
-
-  const effectiveAuthors = cluster.marketSources.size > 0
-    ? Math.max(cluster.humanAuthors.size, cluster.relatedEntities.size, Math.ceil(cluster.totalMentions / 2))
-    : cluster.humanAuthors.size;
-  if (effectiveAuthors < thresholds.minAuthors) {
-    return { rejected: true, reason: `only ${effectiveAuthors} effective author(s) — need ${thresholds.minAuthors}+` };
+  if (BLOCKED_CONCEPTS.has(cluster.concept.toLowerCase())) {
+    return { rejected: true, reason: `blocked/generic concept "${cluster.concept}"` };
+  }
+  if (cluster.humanAuthors.size < thresholds.minAuthors) {
+    return { rejected: true, reason: `only ${cluster.humanAuthors.size} author(s) — need ${thresholds.minAuthors}+` };
   }
   if (cluster.totalMentions < thresholds.minMentions) {
     return { rejected: true, reason: `only ${cluster.totalMentions} mention(s) — need ${thresholds.minMentions}+` };
   }
   if (cluster.totalEngagement < thresholds.minEngagement) {
-    return { rejected: true, reason: `engagement ${cluster.totalEngagement} — below minimum ${thresholds.minEngagement}` };
-  }
-  if (!cluster.entity || cluster.entity.length < 2) {
-    return { rejected: true, reason: `entity name too short` };
-  }
-  if (BLOCKED_NAMES.has(cluster.entity.toLowerCase())) {
-    return { rejected: true, reason: `blocked/generic name "${cluster.entity}"` };
-  }
-  for (const w of cluster.entity.toLowerCase().split(/\s+/)) {
-    if (BLOCKED_NAMES.has(w)) return { rejected: true, reason: `contains blocked word "${w}"` };
-  }
-  for (let pi = 0; pi < BLOCKED_PATTERNS.length; pi++) {
-    if (BLOCKED_PATTERNS[pi].test(cluster.entity)) return { rejected: true, reason: `matches blocked pattern #${pi + 1}` };
+    return { rejected: true, reason: `engagement ${cluster.totalEngagement} below minimum ${thresholds.minEngagement}` };
   }
   return { rejected: false, reason: '' };
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 11: NARRATIVE QUALITY GATE
+// SECTION 11: HELPERS
 // ══════════════════════════════════════════════════════════════════════
 
-function checkNarrativeReject(cluster: EntityCluster): { rejected: boolean; reason: string } {
-  const entityLower = cluster.entity.toLowerCase();
-
-  const METADATA_RE = /\b(trending|rank|top|gainers|losers|volume|liquidity|market|cap|fdv|tvl|holders|price|change|24h|7d|1h|30m|boosted|pairs|coins|tokens|topics|language|stars|forks|github|coingecko|dexscreener)\b/i;
-  if (METADATA_RE.test(entityLower)) return { rejected: true, reason: 'entity is metadata/UI label' };
-
-  const FINANCIAL_RE = /\b(price|market cap|mc|fdv|tvl|volume|24h|7d|1h|change|gain|loss|pump|dump|ath|atl|dip|rally|moon|bullish|bearish|long|short|leverage|margin|liquidity|swap|pool|apy|apr|yield|stake)\b/i;
-  if (FINANCIAL_RE.test(entityLower)) return { rejected: true, reason: 'entity is financial metric' };
-
-  const UI_RE = /\b(coingecko|dexscreener|github|gitlab|bitbucket|npm|pypi|stars?|forks?|watchers?|contributors?|commits?)\b/i;
-  if (UI_RE.test(entityLower)) return { rejected: true, reason: 'entity is platform UI label' };
-
-  // Must have some cultural signal to be a meme narrative
-  const hasCulturalSignal = cluster.entityCategory === 'meme' ||
-    cluster.entityCategory === 'cultural' ||
-    cluster.entityCategory === 'token' ||
-    cluster.relatedEntities.size > 0 ||
-    cluster.aliases.size > 1;
-  if (!hasCulturalSignal) return { rejected: true, reason: 'no cultural signal detected' };
-
-  return { rejected: false, reason: '' };
+function detectCategory(concept: string): string {
+  const c = concept.toLowerCase();
+  for (const a of ANIMALS) { if (c.includes(a)) return 'Animals'; }
+  for (const o of FUNNY_OBJECTS) { if (c.includes(o)) return 'Objects'; }
+  for (const r of MEME_ROLES) { if (c.includes(r)) return 'Characters'; }
+  return 'Internet Meme';
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// SECTION 12: HELPERS
-// ══════════════════════════════════════════════════════════════════════
-
-function detectCategory(entity: string): string {
-  const WORD_MAP: Record<string, string> = {
-    cat:'Animals',dog:'Animals',frog:'Animals',duck:'Animals',bear:'Animals',
-    panda:'Animals',penguin:'Animals',shark:'Animals',whale:'Animals',
-    dragon:'Animals',unicorn:'Animals',llama:'Animals',
-    pepe:'Animals',doge:'Animals',shiba:'Animals',bonk:'Animals',
-    ai:'Technology',robot:'Technology',quantum:'Technology',
-    space:'Space',moon:'Space',mars:'Space',rocket:'Space',
-    banana:'Food',pizza:'Food',taco:'Food',sushi:'Food',
-    anime:'Anime',manga:'Anime',
-    meme:'Internet Meme',viral:'Internet Meme',brainrot:'Internet Meme',
-    skibidi:'Internet Meme',gigachad:'Internet Meme',sigma:'Internet Meme',
-  };
-  const words = entity.toLowerCase().split(/\s+/);
-  const scores: Record<string, number> = {};
-  for (const w of words) { const cat = WORD_MAP[w]; if (cat) scores[cat] = (scores[cat] ?? 0) + 1; }
-  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-  if (sorted.length > 0) return sorted[0][0];
-  return 'General Meme';
-}
-
-function capitalize(s: string): string {
-  return s.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
-function generateReason(cluster: EntityCluster, now: number): string {
+function generateReason(cluster: ConceptCluster, now: number): string {
   const growth = computeGrowthPct(cluster, now);
   const velocity = computeVelocity(cluster);
   const parts: string[] = [];
-  if (growth > 200) parts.push(`Mentions surged +${growth}% in the last 12 hours`);
-  else if (growth > 100) parts.push(`Mentions doubled recently (+${growth}%)`);
-  else if (growth > 0) parts.push(`Steady growth of +${growth}%`);
-  if (velocity > 5) parts.push(`${Math.round(velocity)} mentions/hour — fast rising`);
-  if (cluster.socialSources.size >= 2) parts.push(`Discussed across ${cluster.socialSources.size} social platforms`);
-  if (cluster.humanAuthors.size > 5) parts.push(`${cluster.humanAuthors.size} unique creators`);
-  if (cluster.aliases.size > 1) parts.push(`${cluster.aliases.size} recognized aliases`);
-  if (parts.length === 0) parts.push(`First seen ${Math.round((now - cluster.firstSeen) / 3600000)}h ago with ${cluster.totalMentions} mentions`);
+  if (growth > 200) parts.push(`Mentions surged +${growth}% in last 12 hours`);
+  else if (growth > 100) parts.push(`Mentions doubled (+${growth}%)`);
+  else if (growth > 0) parts.push(`Growth +${growth}%`);
+  if (velocity > 5) parts.push(`${Math.round(velocity)} mentions/hour`);
+  if (cluster.sources.size >= 2) parts.push(`Across ${cluster.sources.size} platforms`);
+  if (cluster.humanAuthors.size > 5) parts.push(`${cluster.humanAuthors.size} unique voices`);
+  if (cluster.aliases.size > 1) parts.push(`${cluster.aliases.size} ways people describe it`);
+  if (parts.length === 0) parts.push(`${cluster.totalMentions} mentions in ${Math.round((now - cluster.firstSeen) / 3600000)}h`);
   return parts.join('. ') + '.';
 }
 
-function generateWhySelected(cluster: EntityCluster, scores: ReturnType<typeof computeLaunchScore>): string {
+function generateWhySelected(cluster: ConceptCluster, scores: ReturnType<typeof computeLaunchScore>): string {
   const parts: string[] = [];
   parts.push(`Mentioned by ${cluster.humanAuthors.size} unique users.`);
-  if (scores.growthVelocity > 50) parts.push(`Growing ${scores.growthVelocity}% in recent hours.`);
-  if (cluster.socialSources.size >= 2) parts.push(`Detected on ${[...cluster.socialSources].join(' and ')}.`);
+  if (scores.growthVelocity > 50) parts.push(`Growing ${scores.growthVelocity}% recently.`);
+  if (cluster.sources.size >= 2) parts.push(`Detected on ${[...cluster.sources].join(' and ')}.`);
   const competition = computeCompetition(cluster);
-  if (competition.existingTokens === 0) parts.push('No successful Solana token exists.');
+  if (competition.existingTokens === 0) parts.push('No existing Solana token found.');
   else if (competition.deadTokens > competition.existingTokens * 0.8) parts.push(`${competition.deadTokens} dead tokens — market cleared.`);
   if (scores.memeStrength >= 60) parts.push('High meme density.');
   if (scores.imagePotential >= 70) parts.push('Strong image potential.');
@@ -826,7 +822,7 @@ function generateWhySelected(cluster: EntityCluster, scores: ReturnType<typeof c
   return parts.join(' ');
 }
 
-function generateEvidence(cluster: EntityCluster): string[] {
+function generateEvidence(cluster: ConceptCluster): string[] {
   const evidence: string[] = [];
   const bySource = new Map<string, number>();
   for (const p of cluster.posts) bySource.set(p.source, (bySource.get(p.source) ?? 0) + 1);
@@ -840,10 +836,7 @@ function generateEvidence(cluster: EntityCluster): string[] {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 13: MAIN ANALYSIS — LAUNCH OPPORTUNITY ENGINE
-//
-// This is the heart of the system. It discovers viral narratives
-// BEFORE they become tokens and evaluates them as launch opportunities.
+// SECTION 12: MAIN ANALYSIS
 // ══════════════════════════════════════════════════════════════════════
 
 export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
@@ -854,168 +847,135 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
 
   const allAuthors = new Set<string>();
   const allSources = new Set<string>();
-  const allSocialSources = new Set<string>();
   for (const p of posts) {
     allAuthors.add(p.author);
     allSources.add(p.source);
-    if (p.providerCategory === 'social') allSocialSources.add(p.source);
   }
 
   const bySource = new Map<string, number>();
   for (const p of posts) bySource.set(p.source, (bySource.get(p.source) ?? 0) + 1);
 
-  // ── STAGE 0: COLLECTED ──
+  // STAGE 0: COLLECTED
   L(SEP);
   L('  COLLECTED POSTS');
   L(SEP);
-  L(`  Total:       ${posts.length}`);
-  L(`  Authors:     ${allAuthors.size}`);
-  L(`  Platforms:   ${allSources.size} (${[...allSources].join(', ')})`);
+  L(`  Total:     ${posts.length}`);
+  L(`  Authors:   ${allAuthors.size}`);
+  L(`  Platforms: ${allSources.size} (${[...allSources].join(', ')})`);
   for (const [src, count] of bySource) L(`    ${src}: ${count}`);
   L('');
 
-  // ── STAGE 1: EXTRACT ENTITIES ──
-  const { clusters: entityClusters, stats: extractionStats, rejectedPosts } = buildEntityClusters(posts);
+  // STAGE 1: CLASSIFY + EXTRACT
+  const { clusters, stats, rejectedPosts } = buildConceptClusters(posts);
 
   L(SEP);
-  L('  STAGE 1: ENTITY EXTRACTION');
+  L('  STAGE 1: CLASSIFY + EXTRACT MEME CONCEPTS');
   L(SEP);
-  L(`  Total posts:            ${extractionStats.totalPosts}`);
-  L(`  Posts with entities:    ${extractionStats.postsWithEntities}`);
-  L(`  Posts without entities: ${extractionStats.postsWithoutEntities}`);
-  L(`  Posts rejected (meta):  ${extractionStats.rejectedMetadata}`);
-  L(`  Total entities found:   ${extractionStats.totalEntitiesExtracted}`);
-  L(`  Unique entities:        ${extractionStats.uniqueEntities}`);
-  L(`  Entities by category:`);
-  for (const [cat, count] of Object.entries(extractionStats.entitiesByCategory).sort((a, b) => b[1] - a[1])) {
-    L(`    ${cat}: ${count}`);
+  L(`  Total posts:           ${stats.totalPosts}`);
+  L(`  Classified as meme:    ${stats.classifiedAsMeme}`);
+  L(`  Classified as cultural:${stats.classifiedAsCultural}`);
+  L(`  Classified as rejected:${stats.classifiedAsRejected}`);
+  L(`  Concepts extracted:    ${stats.conceptsExtracted}`);
+  L(`  Unique concepts:       ${stats.uniqueConcepts}`);
+  L(`  By type:`);
+  for (const [t, c] of Object.entries(stats.conceptsByType).sort((a, b) => b[1] - a[1])) {
+    L(`    ${t}: ${c}`);
   }
   L('');
 
-  L('  EXTRACTED ENTITIES (sample):');
-  for (const entry of extractionStats.extractedEntities.slice(0, 30)) {
-    const entityStr = entry.entities.map((e) => `${e.raw} → ${e.normalized} (${e.category})`).join(', ');
-    L(`    "${entry.post}" → ${entityStr}`);
-  }
-  L('');
-
-  // ── STAGE 2: CLUSTER BY ENTITY ──
+  // STAGE 2: CLUSTER BY CONCEPT
   L(SEP);
-  L('  STAGE 2: CLUSTER BY ENTITY');
+  L('  STAGE 2: CLUSTER BY MEME CONCEPT');
   L(SEP);
-  L(`  Entity clusters created: ${entityClusters.size}`);
-  for (const [key, cluster] of entityClusters) {
+  L(`  Clusters: ${clusters.size}`);
+  for (const [key, cluster] of clusters) {
     L(SEP2);
-    L(`  ENTITY: "${key}" (category: ${cluster.entityCategory})`);
+    L(`  CONCEPT: "${cluster.concept}" (type: ${cluster.conceptType})`);
     L(`    Aliases:    ${[...cluster.aliases].join(', ')}`);
     L(`    Posts:      ${cluster.totalMentions}`);
     L(`    Authors:    ${cluster.authors.size} (human: ${cluster.humanAuthors.size})`);
-    L(`    Social:     ${cluster.socialSources.size} (${[...cluster.socialSources].join(', ')})`);
-    L(`    Market:     ${cluster.marketSources.size} (${[...cluster.marketSources].join(', ')})`);
+    L(`    Platforms:  ${cluster.sources.size} (${[...cluster.sources].join(', ')})`);
     L(`    Engagement: ${cluster.totalEngagement}`);
-    L(`    Related:    ${[...cluster.relatedEntities].join(', ') || '(none)'}`);
+    L(`    Meme score: ${cluster.memeScore}`);
+    L(`    Related:    ${[...cluster.relatedConcepts].join(', ') || '(none)'}`);
   }
   L('');
 
-  // ── STAGE 3: MERGE ALIASES ──
-  const mergedClusters = mergeAliasClusters(entityClusters);
-  const aliasMergeCount = entityClusters.size - mergedClusters.size;
+  // STAGE 3: MERGE ALIASES
+  const merged = mergeAliases(clusters);
+  const aliasMerged = clusters.size - merged.size;
 
   L(SEP);
   L('  STAGE 3: MERGE ALIASES');
   L(SEP);
-  L(`  Before: ${entityClusters.size} | After: ${mergedClusters.size} | Merged: ${aliasMergeCount}`);
+  L(`  Before: ${clusters.size} | After: ${merged.size} | Merged: ${aliasMerged}`);
   L('');
 
-  // ── STAGE 4: ADAPTIVE THRESHOLDS ──
-  const thresholds = computeAdaptiveThresholds(posts, allSocialSources);
+  // STAGE 4: THRESHOLDS
+  const thresholds = computeThresholds(posts);
 
   L(SEP);
   L('  STAGE 4: THRESHOLDS');
   L(SEP);
-  L(`  minAuthors: ${thresholds.minAuthors} | minMentions: ${thresholds.minMentions} | minPlatforms: ${thresholds.minPlatforms} | minEngagement: ${thresholds.minEngagement}`);
-  L(`  Social platforms available: ${allSocialSources.size}`);
+  L(`  minAuthors: ${thresholds.minAuthors} | minMentions: ${thresholds.minMentions} | minEngagement: ${thresholds.minEngagement}`);
   L('');
 
-  // ── STAGE 5: QUALITY FILTER ──
+  // STAGE 5: QUALITY FILTER
   L(SEP);
   L('  STAGE 5: QUALITY FILTER');
   L(SEP);
 
   const rejectedEntities: RejectedEntity[] = [];
-  const passedClusters: EntityCluster[] = [];
+  const passed: ConceptCluster[] = [];
 
-  for (const [key, cluster] of mergedClusters) {
-    const check = checkRejection(cluster, now, thresholds, allSocialSources);
+  for (const [key, cluster] of merged) {
+    const check = checkRejection(cluster, thresholds);
     if (check.rejected) {
       rejectedEntities.push({ entity: key, reason: check.reason, postCount: cluster.totalMentions });
       L(`  REJECTED: "${key}" — ${check.reason}`);
     } else {
-      passedClusters.push(cluster);
-      L(`  PASSED:   "${key}" — ${cluster.totalMentions} posts, ${cluster.authors.size} authors`);
+      passed.push(cluster);
+      L(`  PASSED:   "${key}" — ${cluster.totalMentions} posts, ${cluster.humanAuthors.size} authors`);
     }
   }
-  L(`  Passed: ${passedClusters.length} | Rejected: ${rejectedEntities.length}`);
+  L(`  Passed: ${passed.length} | Rejected: ${rejectedEntities.length}`);
   L('');
 
-  // ── STAGE 6: NARRATIVE QUALITY GATE ──
+  // STAGE 6: SCORE
   L(SEP);
-  L('  STAGE 6: NARRATIVE QUALITY GATE');
-  L(SEP);
-
-  const intelPassed: EntityCluster[] = [];
-  for (const cluster of passedClusters) {
-    const check = checkNarrativeReject(cluster);
-    if (check.rejected) {
-      rejectedEntities.push({ entity: cluster.entity, reason: `narrative gate: ${check.reason}`, postCount: cluster.totalMentions });
-      L(`  REJECTED: "${cluster.entity}" — ${check.reason}`);
-    } else {
-      intelPassed.push(cluster);
-      L(`  PASSED:   "${cluster.entity}"`);
-    }
-  }
-  L(`  Passed: ${intelPassed.length}`);
-  L('');
-
-  // ── STAGE 7: SCORE AS LAUNCH OPPORTUNITY ──
-  L(SEP);
-  L('  STAGE 7: LAUNCH OPPORTUNITY SCORING');
+  L('  STAGE 6: LAUNCH OPPORTUNITY SCORING');
   L(SEP);
 
-  const scored: Array<{ cluster: EntityCluster; scores: ReturnType<typeof computeLaunchScore>; competition: CompetitionData }> = [];
-
-  for (const cluster of intelPassed) {
+  const scored: Array<{ cluster: ConceptCluster; scores: ReturnType<typeof computeLaunchScore>; competition: CompetitionData }> = [];
+  for (const cluster of passed) {
     const scores = computeLaunchScore(cluster, now);
     const competition = computeCompetition(cluster);
     scored.push({ cluster, scores, competition });
-    L(`  "${cluster.entity}": launch=${scores.launchScore} virality=${scores.viralityScore} meme=${scores.memeStrength} competition=${competition.saturation} (${competition.recommendation})`);
+    L(`  "${cluster.concept}": launch=${scores.launchScore} meme=${scores.memeStrength} virality=${scores.viralityScore} competition=${competition.saturation}`);
   }
   L('');
 
-  // ── STAGE 8: SORT + TOP 15 ──
+  // STAGE 7: SORT + TOP 15
   scored.sort((a, b) => b.scores.launchScore - a.scores.launchScore);
   const top15 = scored.slice(0, MAX_OPPORTUNITIES);
 
   const opportunities: LaunchOpportunity[] = [];
   for (const { cluster, scores, competition } of top15) {
-    const category = detectCategory(cluster.entity);
+    const category = detectCategory(cluster.concept);
     const reason = generateReason(cluster, now);
     const whySelected = generateWhySelected(cluster, scores);
     const evidence = generateEvidence(cluster);
-
     const topPostTitles = [...cluster.posts]
       .sort((a, b) => (b.likes + b.comments) - (a.likes + a.comments))
       .slice(0, 3)
       .map((p) => p.title);
 
-    const effectiveAuthors = cluster.marketSources.size > 0
-      ? Math.max(cluster.humanAuthors.size, cluster.relatedEntities.size, Math.ceil(cluster.totalMentions / 2))
-      : cluster.humanAuthors.size;
+    const effectiveAuthors = cluster.humanAuthors.size;
 
     opportunities.push({
-      id: `${cluster.entity.toLowerCase()}-${now}`,
-      narrative: capitalize(cluster.entity),
-      canonicalEntity: cluster.entity,
+      id: `${cluster.concept.toLowerCase().replace(/\s+/g, '-')}-${now}`,
+      narrative: cluster.concept.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      canonicalEntity: cluster.concept.toUpperCase(),
       aliases: [...cluster.aliases],
       launchScore: scores.launchScore,
       viralityScore: scores.viralityScore,
@@ -1029,8 +989,8 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
       uniqueAuthors: effectiveAuthors,
       sourcesFound: [...cluster.sources],
       sourceCount: cluster.sources.size,
-      socialPlatforms: [...cluster.socialSources],
-      marketPlatforms: [...cluster.marketSources],
+      socialPlatforms: [...cluster.sources].filter((s) => !['dexscreener','coingecko'].includes(s)),
+      marketPlatforms: [],
       firstDetected: cluster.firstSeen,
       lastSeen: cluster.lastSeen,
       momentum: scores.momentum,
@@ -1048,29 +1008,28 @@ export function analyzeNarratives(posts: RawPost[]): LaunchOpportunity[] {
     });
   }
 
-  // ── FINAL DIAGNOSTICS ──
+  // FINAL DIAGNOSTICS
   L(SEP);
   L('  FINAL DIAGNOSTICS');
   L(SEP);
-  L(`  Collected posts:       ${posts.length}`);
-  L(`  Extracted entities:    ${extractionStats.uniqueEntities}`);
-  L(`  Merged entities:       ${aliasMergeCount}`);
-  L(`  Rejected entities:     ${rejectedEntities.length}`);
-  L(`  Accepted entities:     ${passedClusters.length}`);
-  L(`  After narrative gate:  ${intelPassed.length}`);
-  L(`  Top 15 opportunities:  ${top15.length}`);
+  L(`  Collected posts:     ${posts.length}`);
+  L(`  Meme classified:     ${stats.classifiedAsMeme + stats.classifiedAsCultural}`);
+  L(`  Concepts extracted:  ${stats.conceptsExtracted}`);
+  L(`  Unique concepts:     ${stats.uniqueConcepts}`);
+  L(`  Merged aliases:      ${aliasMerged}`);
+  L(`  Rejected:            ${rejectedEntities.length}`);
+  L(`  Passed filter:       ${passed.length}`);
+  L(`  Top 15 opportunities:${top15.length}`);
   L('');
-
-  L('  REJECTED ENTITIES:');
+  L('  REJECTED CONCEPTS:');
   for (const re of rejectedEntities) {
     L(`    ${re.entity} (${re.postCount} posts) — ${re.reason}`);
   }
   L('');
-
   L('  TOP 15 LAUNCH OPPORTUNITIES:');
   for (let i = 0; i < top15.length; i++) {
     const { cluster, scores, competition } = top15[i];
-    L(`    #${i + 1}: ${cluster.entity} — launch=${scores.launchScore} competition=${competition.saturation} recommendation=${competition.recommendation}`);
+    L(`    #${i + 1}: ${cluster.concept} — launch=${scores.launchScore} competition=${competition.saturation} (${competition.recommendation})`);
   }
   L(SEP);
 
