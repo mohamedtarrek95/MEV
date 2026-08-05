@@ -7,7 +7,7 @@ import { WalletCard } from './components/WalletCard';
 import { ProgressBar } from './components/ProgressBar';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PumpLaunchpad } from './components/PumpLaunchpad';
-import { TrendingSuggestor } from './components/TrendingSuggestor';
+import { LaunchRadar } from './components/LaunchRadar';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { formatToken } from './utils/format';
 
@@ -59,7 +59,7 @@ export default function App() {
             Pump.fun Launchpad
           </button>
           <button onClick={() => setTab('suggest')} className={tabCls(tab === 'suggest')}>
-            🧠 Meme Intel
+            Launch Radar
           </button>
         </nav>
 
@@ -113,8 +113,8 @@ export default function App() {
         ) : tab === 'pump' ? (
           <PumpLaunchpad api={b} />
         ) : (
-          <ErrorBoundary label="Meme Intel">
-            <TrendingSuggestor api={b} />
+          <ErrorBoundary label="Launch Radar">
+            <LaunchRadar />
           </ErrorBoundary>
         )}
 
