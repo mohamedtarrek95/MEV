@@ -1,7 +1,7 @@
 import { createAllProviders } from './providers/index.js';
 import { analyzeNarratives } from './engine.js';
 import { saveReport, disconnect, hasRedis } from './db.js';
-import type { NarrativeReport, RawPost } from './types.js';
+import type { ConceptReport, RawPost } from './types.js';
 
 const REFRESH_MS = Number(process.env.INTEL_REFRESH_MS || 5 * 60 * 1000);
 const MAX_RETRIES = 2;
@@ -21,9 +21,9 @@ async function fetchWithRetry(provider: { name: string; sourceId: string; fetch(
   }
 }
 
-export async function runScan(): Promise<NarrativeReport> {
+export async function runScan(): Promise<ConceptReport> {
   const providers = createAllProviders();
-  console.log(`[launch-engine] scanning ${providers.length} meme sources...`);
+  console.log(`[launch-engine] scanning ${providers.length} sources...`);
 
   const results = await Promise.allSettled(
     providers.map(async (p) => {
@@ -42,27 +42,28 @@ export async function runScan(): Promise<NarrativeReport> {
     }
   }
 
-  console.log(`[launch-engine] total posts collected: ${allPosts.length} from ${sourcesScanned.length} sources`);
+  console.log(`[launch-engine] total posts: ${allPosts.length} from ${sourcesScanned.length} sources`);
 
-  const opportunities = analyzeNarratives(allPosts);
-  console.log(`[launch-engine] analysis complete: ${opportunities.length} launch opportunities`);
+  const concepts = analyzeNarratives(allPosts);
+  console.log(`[launch-engine] analysis complete: ${concepts.length} meme concepts`);
 
-  const report: NarrativeReport = {
+  const report: ConceptReport = {
     generatedAt: Date.now(),
-    opportunities,
+    concepts,
+    narrativesDetected: [],
     postsProcessed: allPosts.length,
     sourcesScanned,
     windowHours: 24,
     diagnostics: {
       collectedPosts: allPosts.length,
+      cryptoPosts: 0,
       memePosts: 0,
-      culturalPosts: 0,
+      newsPosts: 0,
       rejectedPosts: 0,
-      phrasesExtracted: 0,
-      narrativeClusters: 0,
-      passedFilter: opportunities.length,
-      topOpportunities: opportunities.length,
-      pipelineFlow: [],
+      narrativesDetected: 0,
+      conceptsGenerated: 0,
+      conceptsFiltered: concepts.length,
+      topConcepts: concepts.length,
     },
   };
 

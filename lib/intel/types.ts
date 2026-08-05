@@ -1,4 +1,4 @@
-export type ProviderCategory = 'social';
+export type ProviderCategory = 'social' | 'crypto' | 'news';
 
 export interface RawPost {
   id: string;
@@ -23,70 +23,65 @@ export interface ITrendProvider {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// LAUNCH OPPORTUNITY ENGINE TYPES
+// CRYPTO MEME CREATION INTELLIGENCE ENGINE
 //
-// This engine discovers pre-token viral narratives.
-// Its only objective: "Find ideas that have high probability of
-// becoming successful meme tokens."
+// This engine INVENTS new meme coin concepts.
+// It does NOT detect existing memes.
+// It does NOT rank existing tokens.
+//
+// Its only objective:
+// "If I launch this meme coin today, why would people buy it?"
 // ══════════════════════════════════════════════════════════════════════
 
-export interface LaunchOpportunity {
+export interface MemeConcept {
   id: string;
 
-  // ── The Idea ──
-  narrative: string;                  // "Italian Brainrot Shark"
-  suggestedName: string;              // "ItalianBrainrotShark"
-  suggestedTicker: string;            // "IBRK"
-  oneSentenceDescription: string;     // "Absurd Italian meme combining brainrot culture with shark imagery"
+  // ── The Concept ──
+  name: string;                       // "Gas Fee Goblin"
+  ticker: string;                     // "GFEE"
+  oneSentence: string;                // "A goblin that eats your gas fees before you do"
+  coreJoke: string;                   // The punchline — why this is funny
+  coreEmotion: string;                // The feeling it triggers (frustration, hype, absurdity)
 
-  // ── Core Scores (0-100) ──
+  // ── Narrative Origin ──
+  narrative: string;                  // The underlying narrative this concept emerged from
+  narrativeContext: string;           // Full context of why this narrative exists
+
+  // ── Target ──
+  targetAudience: string;             // Who would buy this
+  communityType: string;              // What kind of community forms around it
+
+  // ── Visual ──
+  mascot: string;                     // Character description
+  visualStyle: string;                // Art style direction
+  logoConcept: string;                // Logo description
+  imagePrompt: string;                // AI image generation prompt
+
+  // ── Scoring (0-100) ──
   launchScore: number;                // Final composite score
-  viralityScore: number;              // How fast is this spreading?
-  narrativeStrength: number;          // How complete/well-formed is this narrative?
-  growthVelocity: number;             // Acceleration of discussion
-  communityDiversity: number;         // How many independent voices
-  crossPlatformSpread: number;        // How many platforms
-  originalityScore: number;           // How novel vs. saturated?
-  imagePotential: number;             // Can this become a mascot/sticker/profile pic?
-  brandability: number;               // Easy to remember, pronounce, ticker?
-  mascotPotential: number;            // Can this become a recognizable character?
-  tickerQuality: number;              // Short, memorable, unique ticker?
-  momentum: number;                   // Acceleration of discussion
-  launchProbability: number;          // Probability of successful token launch
+  originalityScore: number;           // How novel (25%)
+  viralityScore: number;              // How shareable (20%)
+  visualPotential: number;            // Mascot/sticker/profile pic potential (15%)
+  narrativeStrength: number;          // How well-formed is the story (15%)
+  brandability: number;               // Rememberable, pronounceable (10%)
+  communityFit: number;               // Does crypto twitter love this (10%)
+  competitionLevel: number;           // How many similar tokens exist (5%)
 
   // ── Competition ──
-  competition: CompetitionData;
+  existingTokens: number;
+  competitionNote: string;
 
   // ── Evidence ──
-  mentionCount: number;
-  uniqueAuthors: number;
-  sourcesFound: string[];
-  sourceCount: number;
-  socialPlatforms: string[];
+  supportingSignals: string[];
+  postsUsed: EvidencePost[];
+  sourcesScanned: string[];
 
-  // ── Temporal ──
-  firstDetected: number;
-  lastSeen: number;
-
-  // ── Narrative Structure ──
-  summary: string;                    // One-sentence summary
-  coreCharacters: string[];           // Recurring entities
-  runningJoke: string;                // The main joke/punchline
-  repeatedCatchphrases: string[];     // Ways people describe this
-  relatedHashtags: string[];
-  whyThisIsBecomingViral: string;     // WHY it's spreading
-
-  // ── Content ──
-  topPostTitles: string[];
-  supportingPosts: SupportingPost[];
-  evidence: string[];
-  category: string;
-
-  // ── Growth ──
-  growthTimeline: GrowthBucket[];
+  // ── Timing ──
+  generatedAt: number;
+  estimatedChance: string;            // "High" / "Medium" / "Low"
 }
 
-export interface SupportingPost {
+export interface EvidencePost {
   title: string;
   source: string;
   author: string;
@@ -94,25 +89,19 @@ export interface SupportingPost {
   timestamp: number;
 }
 
-export interface GrowthBucket {
-  time: number;
-  count: number;
+export interface NarrativeSignal {
+  theme: string;                      // "gas fee frustration"
+  strength: number;                   // 0-100
+  postCount: number;
+  sourceCount: number;
+  emotion: string;                    // dominant emotion
+  posts: RawPost[];
 }
 
-export interface CompetitionData {
-  existingTokens: number;
-  deadTokens: number;
-  successfulTokens: number;
-  copies: number;
-  forks: number;
-  saturation: 'none' | 'low' | 'medium' | 'high' | 'saturated';
-  recommendation: 'launch_immediately' | 'launch_soon' | 'wait' | 'do_not_launch';
-  recommendationReason: string;
-}
-
-export interface NarrativeReport {
+export interface ConceptReport {
   generatedAt: number;
-  opportunities: LaunchOpportunity[];
+  concepts: MemeConcept[];
+  narrativesDetected: NarrativeSignal[];
   postsProcessed: number;
   sourcesScanned: string[];
   windowHours: number;
@@ -121,17 +110,19 @@ export interface NarrativeReport {
 
 export interface PipelineDiagnostics {
   collectedPosts: number;
+  cryptoPosts: number;
   memePosts: number;
-  culturalPosts: number;
+  newsPosts: number;
   rejectedPosts: number;
-  phrasesExtracted: number;
-  narrativeClusters: number;
-  passedFilter: number;
-  topOpportunities: number;
-  pipelineFlow: string[];
+  narrativesDetected: number;
+  conceptsGenerated: number;
+  conceptsFiltered: number;
+  topConcepts: number;
 }
 
 // Legacy aliases
-export type MemeNarrative = LaunchOpportunity;
-export type IntelReport = NarrativeReport;
+export type MemeNarrative = MemeConcept;
+export type IntelReport = ConceptReport;
 export type NarrativeCluster = never;
+export type LaunchOpportunity = MemeConcept;
+export type NarrativeReport = ConceptReport;

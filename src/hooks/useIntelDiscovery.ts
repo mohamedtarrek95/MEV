@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LaunchOpportunity, NarrativeReport, CompetitionData } from '../utils/intel/types';
+import type { MemeConcept, ConceptReport } from '../utils/intel/types';
 import { REFRESH_MS } from '../utils/intel/sources';
 
 const INTEL_API_URL = import.meta.env.VITE_INTEL_API_URL || '/api/report?action=intel';
-const CACHE_KEY = 'launch-opportunity-cache';
+const CACHE_KEY = 'meme-concept-cache';
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 interface CacheEnvelope {
   version: number;
   timestamp: number;
-  report: NarrativeReport;
+  report: ConceptReport;
 }
 
-function readCache(): NarrativeReport | null {
+function readCache(): ConceptReport | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const envelope: CacheEnvelope = JSON.parse(raw);
-    if (envelope.version !== 2) { localStorage.removeItem(CACHE_KEY); return null; }
+    if (envelope.version !== 3) { localStorage.removeItem(CACHE_KEY); return null; }
     if (Date.now() - envelope.timestamp > CACHE_TTL_MS) { localStorage.removeItem(CACHE_KEY); return null; }
     return envelope.report;
   } catch {
@@ -26,42 +26,11 @@ function readCache(): NarrativeReport | null {
   }
 }
 
-function writeCache(report: NarrativeReport) {
+function writeCache(report: ConceptReport) {
   try {
-    const envelope: CacheEnvelope = { version: 2, timestamp: Date.now(), report };
+    const envelope: CacheEnvelope = { version: 3, timestamp: Date.now(), report };
     localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
   } catch { /* ignore */ }
-}
-
-export function getCompetitionColor(saturation: CompetitionData['saturation']): string {
-  switch (saturation) {
-    case 'none': return 'text-emerald-400';
-    case 'low': return 'text-green-400';
-    case 'medium': return 'text-yellow-400';
-    case 'high': return 'text-orange-400';
-    case 'saturated': return 'text-red-400';
-    default: return 'text-zinc-400';
-  }
-}
-
-export function getRecommendationColor(rec: CompetitionData['recommendation']): string {
-  switch (rec) {
-    case 'launch_immediately': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
-    case 'launch_soon': return 'bg-green-500/20 text-green-300 border-green-500/30';
-    case 'wait': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
-    case 'do_not_launch': return 'bg-red-500/20 text-red-300 border-red-500/30';
-    default: return 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30';
-  }
-}
-
-export function getRecommendationLabel(rec: CompetitionData['recommendation']): string {
-  switch (rec) {
-    case 'launch_immediately': return 'LAUNCH NOW';
-    case 'launch_soon': return 'LAUNCH SOON';
-    case 'wait': return 'WAIT';
-    case 'do_not_launch': return 'DO NOT LAUNCH';
-    default: return 'UNKNOWN';
-  }
 }
 
 export function getScoreColor(score: number): string {
@@ -80,9 +49,18 @@ export function getScoreBg(score: number): string {
   return 'bg-red-500';
 }
 
+export function getChanceColor(chance: string): string {
+  switch (chance) {
+    case 'High': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+    case 'Medium': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
+    case 'Low': return 'bg-red-500/20 text-red-300 border-red-500/30';
+    default: return 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30';
+  }
+}
+
 interface UseIntelResult {
-  report: NarrativeReport | null;
-  opportunities: LaunchOpportunity[];
+  report: ConceptReport | null;
+  concepts: MemeConcept[];
   loading: boolean;
   error: string | null;
   lastRefresh: number | null;
@@ -92,7 +70,7 @@ interface UseIntelResult {
 
 export function useIntelDiscovery(): UseIntelResult {
   const cached = readCache();
-  const [report, setReport] = useState<NarrativeReport | null>(cached);
+  const [report, setReport] = useState<ConceptReport | null>(cached);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<number | null>(cached?.generatedAt ?? null);
@@ -111,7 +89,7 @@ export function useIntelDiscovery(): UseIntelResult {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json() as {
         ok: boolean;
-        report: NarrativeReport | null;
+        report: ConceptReport | null;
         message?: string;
         error?: string;
       };
@@ -124,7 +102,7 @@ export function useIntelDiscovery(): UseIntelResult {
         setLastRefresh(body.report.generatedAt);
         setError(null);
       } else {
-        const msg = body.message || 'No launch opportunities found.';
+        const msg = body.message || 'No concepts found.';
         setReport(null);
         setError(msg);
       }
@@ -145,7 +123,7 @@ export function useIntelDiscovery(): UseIntelResult {
 
   return {
     report,
-    opportunities: report?.opportunities ?? [],
+    concepts: report?.concepts ?? [],
     loading,
     error,
     lastRefresh,

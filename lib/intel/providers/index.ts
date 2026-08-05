@@ -1,12 +1,12 @@
-import type { ITrendProvider } from '../types.js';
+import type { ITrendProvider, RawPost } from '../types.js';
 import { RedditProvider } from './reddit.js';
 import { BlueskyProvider } from './bluesky.js';
 import { MastodonProvider } from './mastodon.js';
 import { LemmyProvider } from './lemmy.js';
 
-// Only meme-generating platforms are included.
-// HackerNews and GitHub are NOT meme sources — they produce developer content.
-// Market providers are removed — this engine discovers pre-token narratives.
+// Crypto sources have higher weight than general meme sources.
+// Both are needed: crypto tells us what traders care about,
+// meme tells us what culture is doing.
 export function createAllProviders(): ITrendProvider[] {
   return [
     new RedditProvider(),

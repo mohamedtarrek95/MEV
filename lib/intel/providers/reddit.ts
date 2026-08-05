@@ -1,24 +1,29 @@
 import type { ITrendProvider, RawPost } from '../types.js';
 
+// Crypto subreddits have HIGHER weight for meme coin creation.
+// We need to know what traders are talking about, frustrated by, and excited about.
 const SUBREDDITS = [
-  // Crypto/meme discussion
-  'CryptoMoonShots', 'SatoshiStreetBets', 'memecoin', 'solana',
-  // General meme culture
+  // ── Crypto Trading (HIGH PRIORITY) ──
+  'CryptoMoonShots', 'SatoshiStreetBets', 'CryptoMarkets', 'CryptoCurrency',
+  'Solana', 'solana', 'memecoin', 'memecoins',
+  // ── DeFi / Ecosystem ──
+  'DeFi', 'ethfinance', 'ethtrader', 'CryptoTechnology',
+  // ── Meme Culture (MEDIUM PRIORITY) ──
   'memes', 'dankmemes', 'MemeEconomy', 'ComedyNecrophilia',
   'shitposting', '196', 'okbuddyretard',
-  // Internet culture
+  // ── Internet Culture ──
   'AnimalsBeingDerps', 'AnimalsBeingFunny', 'cats', 'dogs',
-  'AnimalMemes', 'CatMemes', 'dogelon',
-  // AI/tech memes
+  'AnimalMemes', 'CatMemes',
+  // ── AI / Tech (context for AI meme coins) ──
   'LocalLLaMA', 'artificial', 'singularity',
-  // Trending cultural discussions
+  // ── Trending cultural discussions ──
   'outoftheloop', 'NoStupidQuestions', 'tifu',
 ];
 
 async function fetchSubreddit(sub: string, after?: string): Promise<{ posts: RawPost[]; after: string | null }> {
   const url = `https://www.reddit.com/r/${sub}/hot.json?limit=25${after ? `&after=${after}` : ''}`;
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'MemeLaunchEngine/1.0 (pre-token-narrative-discovery)' },
+    headers: { 'User-Agent': 'CryptoMemeEngine/1.0 (meme-coin-creation-intelligence)' },
   });
   if (!res.ok) throw new Error(`Reddit ${sub}: ${res.status}`);
   const data = await res.json() as {

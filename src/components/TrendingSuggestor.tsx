@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import type { BundleApi } from '../hooks/useBundle';
-import { useIntelDiscovery, getScoreColor, getScoreBg, getCompetitionColor, getRecommendationColor, getRecommendationLabel } from '../hooks/useIntelDiscovery';
+import { useIntelDiscovery, getScoreColor, getScoreBg, getChanceColor } from '../hooks/useIntelDiscovery';
 import { sourceLabel } from '../utils/intel/sources';
-import type { LaunchOpportunity } from '../utils/intel/types';
+import type { MemeConcept } from '../utils/intel/types';
 import { LaunchModal, type LaunchModalData } from './LaunchModal';
 import { IntelAdminPanel } from './IntelAdminPanel';
 import { Spinner } from './Spinner';
@@ -31,9 +31,8 @@ function MiniStat({ label, value, color }: { label: string; value: string | numb
   );
 }
 
-function OpportunityCard({ opportunity, index, onCreateToken }: { opportunity: LaunchOpportunity; index: number; onCreateToken: (o: LaunchOpportunity) => void }) {
+function ConceptCard({ concept, index, onCreateToken }: { concept: MemeConcept; index: number; onCreateToken: (c: MemeConcept) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const competition = opportunity.competition;
   const rankBadge = index < 3
     ? 'border-fuchsia-500/50 bg-fuchsia-950/50 text-fuchsia-300'
     : index < 7
@@ -49,94 +48,93 @@ function OpportunityCard({ opportunity, index, onCreateToken }: { opportunity: L
             #{index + 1}
           </span>
           <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 font-mono text-xs font-black text-zinc-300">
-            {opportunity.suggestedTicker}
+            {concept.ticker}
           </div>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-mono text-base font-bold text-zinc-100">{opportunity.narrative}</h3>
-            <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold ${getRecommendationColor(competition.recommendation)}`}>
-              {getRecommendationLabel(competition.recommendation)}
+            <h3 className="font-mono text-base font-bold text-zinc-100">{concept.name}</h3>
+            <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold ${getChanceColor(concept.estimatedChance)}`}>
+              {concept.estimatedChance.toUpperCase()} CHANCE
             </span>
           </div>
-          <p className="mt-1 text-xs text-zinc-400">{opportunity.oneSentenceDescription}</p>
+          <p className="mt-1 text-xs text-zinc-400">{concept.oneSentence}</p>
         </div>
         <div className="text-right shrink-0">
           <div className="text-[10px] uppercase tracking-wider text-zinc-600">Launch Score</div>
-          <div className={`font-mono text-3xl font-black ${getScoreColor(opportunity.launchScore)}`}>{opportunity.launchScore}</div>
-          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mt-1">Probability</div>
-          <div className="font-mono text-lg font-bold text-zinc-400">{opportunity.launchProbability}%</div>
+          <div className={`font-mono text-3xl font-black ${getScoreColor(concept.launchScore)}`}>{concept.launchScore}</div>
         </div>
       </div>
 
-      {/* Why This Is Becoming Viral */}
-      <div className="mt-3 rounded-md border border-fuchsia-500/20 bg-fuchsia-950/20 px-3 py-2">
-        <div className="text-[10px] uppercase tracking-wider text-fuchsia-500 mb-1">Why This Is Becoming Viral</div>
-        <p className="text-[11px] text-fuchsia-300/80 leading-relaxed">{opportunity.whyThisIsBecomingViral}</p>
+      {/* Core Joke + Emotion */}
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="rounded-md border border-fuchsia-500/20 bg-fuchsia-950/20 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-fuchsia-500 mb-1">Core Joke</div>
+          <p className="text-[11px] text-fuchsia-300/80 leading-relaxed">{concept.coreJoke}</p>
+        </div>
+        <div className="rounded-md border border-cyan-500/20 bg-cyan-950/20 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-cyan-500 mb-1">Core Emotion</div>
+          <p className="text-[11px] text-cyan-300/80 leading-relaxed">{concept.coreEmotion}</p>
+        </div>
       </div>
 
       {/* Competition */}
       <div className="mt-3 rounded-md border border-amber-500/20 bg-amber-950/20 px-3 py-2">
-        <div className="text-[10px] uppercase tracking-wider text-amber-500 mb-1">Competition Analysis</div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-          <div><span className="text-zinc-600">Existing: </span><span className={getCompetitionColor(competition.saturation)}>{competition.existingTokens.toLocaleString()}</span></div>
-          <div><span className="text-zinc-600">Dead: </span><span className="text-zinc-400">{competition.deadTokens.toLocaleString()}</span></div>
-          <div><span className="text-zinc-600">Successful: </span><span className="text-emerald-400">{competition.successfulTokens}</span></div>
-          <div><span className="text-zinc-600">Saturation: </span><span className={getCompetitionColor(competition.saturation)}>{competition.saturation}</span></div>
+        <div className="text-[10px] uppercase tracking-wider text-amber-500 mb-1">Competition</div>
+        <div className="flex items-center gap-4 text-[11px]">
+          <div><span className="text-zinc-600">Existing Tokens: </span><span className="text-zinc-300">{concept.existingTokens}</span></div>
+          <div><span className="text-zinc-600">Level: </span><span className={getScoreColor(100 - concept.competitionLevel)}>{concept.competitionLevel <= 20 ? 'Low' : concept.competitionLevel <= 40 ? 'Medium' : 'High'}</span></div>
         </div>
-        <p className="mt-1 text-[10px] text-amber-300/60">{competition.recommendationReason}</p>
+        <p className="mt-1 text-[10px] text-amber-300/60">{concept.competitionNote}</p>
       </div>
 
-      {/* Core Scores */}
+      {/* Scores */}
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <ScoreBar score={opportunity.viralityScore} label="Virality" />
-        <ScoreBar score={opportunity.narrativeStrength} label="Narrative" />
-        <ScoreBar score={opportunity.communityDiversity} label="Community" />
-        <ScoreBar score={opportunity.originalityScore} label="Originality" />
+        <ScoreBar score={concept.originalityScore} label="Originality" />
+        <ScoreBar score={concept.viralityScore} label="Virality" />
+        <ScoreBar score={concept.visualPotential} label="Visual" />
+        <ScoreBar score={concept.narrativeStrength} label="Narrative" />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <ScoreBar score={concept.brandability} label="Brandability" />
+        <ScoreBar score={concept.communityFit} label="Community" />
+        <ScoreBar score={100 - concept.competitionLevel} label="Low Competition" />
       </div>
 
-      {/* Secondary Scores */}
-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <MiniStat label="Image Potential" value={`${opportunity.imagePotential}%`} color={getScoreColor(opportunity.imagePotential)} />
-        <MiniStat label="Brandability" value={`${opportunity.brandability}%`} color={getScoreColor(opportunity.brandability)} />
-        <MiniStat label="Mascot" value={`${opportunity.mascotPotential}%`} color={getScoreColor(opportunity.mascotPotential)} />
-        <MiniStat label="Momentum" value={`${opportunity.momentum}%`} color={getScoreColor(opportunity.momentum)} />
-        <MiniStat label="First Seen" value={`${Math.round((Date.now() - opportunity.firstDetected) / 3600000)}h ago`} />
+      {/* Target + Audience */}
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+        <div><span className="text-zinc-600">Target Audience: </span><span className="text-zinc-300">{concept.targetAudience}</span></div>
+        <div><span className="text-zinc-600">Community Type: </span><span className="text-zinc-300">{concept.communityType}</span></div>
       </div>
 
-      {/* Stats Row */}
-      <div className="mt-3 flex items-center gap-6 text-[11px]">
-        <div><span className="text-zinc-600">Mentions: </span><span className="font-mono font-bold text-zinc-200">{opportunity.mentionCount}</span></div>
-        <div><span className="text-zinc-600">Authors: </span><span className="font-mono font-bold text-zinc-200">{opportunity.uniqueAuthors}</span></div>
-        <div><span className="text-zinc-600">Growth: </span>
-          {opportunity.growthVelocity > 0
-            ? <span className="font-mono font-bold text-emerald-400">+{opportunity.growthVelocity}%</span>
-            : <span className="font-mono text-zinc-500">—</span>}
+      {/* Visual Identity */}
+      <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
+        <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Visual Identity</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px]">
+          <div><span className="text-zinc-600">Mascot: </span><span className="text-zinc-300">{concept.mascot}</span></div>
+          <div><span className="text-zinc-600">Style: </span><span className="text-zinc-300">{concept.visualStyle}</span></div>
+          <div className="sm:col-span-2"><span className="text-zinc-600">Logo: </span><span className="text-zinc-300">{concept.logoConcept}</span></div>
         </div>
       </div>
 
-      {/* Platforms */}
+      {/* Narrative Origin */}
       <div className="mt-3">
-        <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Detected On</div>
-        <div className="flex flex-wrap gap-1.5">
-          {opportunity.sourcesFound.map((src) => (
-            <span key={src} className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-950/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {sourceLabel(src)}
-            </span>
-          ))}
-        </div>
+        <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Narrative Origin</div>
+        <p className="text-[11px] text-zinc-500">{concept.narrative} — {concept.narrativeContext.slice(0, 200)}</p>
       </div>
 
-      {/* Top Posts */}
-      {opportunity.topPostTitles.length > 0 && (
+      {/* Sources */}
+      {concept.sourcesScanned.length > 0 && (
         <div className="mt-3">
-          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Top Posts</div>
-          <ul className="space-y-0.5">
-            {opportunity.topPostTitles.map((t, i) => (
-              <li key={i} className="text-[11px] text-zinc-500 truncate">• {t}</li>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Detected On</div>
+          <div className="flex flex-wrap gap-1.5">
+            {concept.sourcesScanned.map((src) => (
+              <span key={src} className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-950/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                {sourceLabel(src)}
+              </span>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
@@ -145,97 +143,50 @@ function OpportunityCard({ opportunity, index, onCreateToken }: { opportunity: L
         onClick={() => setExpanded(!expanded)}
         className="mt-3 text-[10px] uppercase tracking-wider text-zinc-600 hover:text-zinc-400 transition-colors"
       >
-        {expanded ? '▾ Hide Details' : '▸ Show Evidence & Token Preview'}
+        {expanded ? '▾ Hide Details' : '▸ Show Evidence & Image Prompt'}
       </button>
 
       {expanded && (
         <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
-          {/* Evidence */}
-          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-2">Evidence</div>
-          <ul className="space-y-1">
-            {opportunity.evidence.map((e, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-zinc-400">
-                <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-zinc-600" />
-                {e}
-              </li>
-            ))}
-          </ul>
-
-          {/* Narrative */}
-          <div className="mt-3 border-t border-zinc-800 pt-2">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Narrative</div>
-            <p className="text-[11px] text-zinc-400">{opportunity.summary}</p>
-          </div>
-
-          {/* Characters */}
-          {opportunity.coreCharacters.length > 0 && (
-            <div className="mt-2">
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Core Characters</div>
-              <div className="flex flex-wrap gap-1">
-                {opportunity.coreCharacters.map((c, i) => (
-                  <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">{c}</span>
+          {/* Supporting Signals */}
+          {concept.supportingSignals.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Supporting Signals</div>
+              <ul className="space-y-0.5">
+                {concept.supportingSignals.slice(0, 5).map((s, i) => (
+                  <li key={i} className="text-[11px] text-zinc-500 truncate">• {s}</li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
 
-          {/* Catchphrases */}
-          {opportunity.repeatedCatchphrases.length > 0 && (
-            <div className="mt-2">
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Catchphrases</div>
-              <div className="flex flex-wrap gap-1">
-                {opportunity.repeatedCatchphrases.map((c, i) => (
-                  <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">"{c}"</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Hashtags */}
-          {opportunity.relatedHashtags.length > 0 && (
-            <div className="mt-2">
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Hashtags</div>
-              <div className="flex flex-wrap gap-1">
-                {opportunity.relatedHashtags.map((h, i) => (
-                  <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">{h}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Token Preview */}
-          <div className="mt-3 border-t border-zinc-800 pt-2">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Token Preview</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-[11px]">
-              <div><span className="text-zinc-600">Name: </span><span className="text-zinc-300">{opportunity.suggestedName}</span></div>
-              <div><span className="text-zinc-600">Ticker: </span><span className="text-zinc-300">{opportunity.suggestedTicker}</span></div>
-              <div><span className="text-zinc-600">Category: </span><span className="text-zinc-300">{opportunity.category}</span></div>
-              <div><span className="text-zinc-600">Cross-Platform: </span><span className="text-zinc-300">{opportunity.crossPlatformSpread}%</span></div>
-              <div><span className="text-zinc-600">Ticker Quality: </span><span className="text-zinc-300">{opportunity.tickerQuality}%</span></div>
-            </div>
-          </div>
-
-          {/* Supporting Posts */}
-          {opportunity.supportingPosts.length > 0 && (
-            <div className="mt-3 border-t border-zinc-800 pt-2">
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Supporting Posts</div>
+          {/* Evidence Posts */}
+          {concept.postsUsed.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Evidence Posts</div>
               <ul className="space-y-1">
-                {opportunity.supportingPosts.slice(0, 5).map((p, i) => (
+                {concept.postsUsed.map((p, i) => (
                   <li key={i} className="text-[10px] text-zinc-500">
                     <span className="text-zinc-400">{p.title}</span>
-                    <span className="text-zinc-600"> — {sourceLabel(p.source)} by {p.author} ({p.engagement} eng)</span>
+                    <span className="text-zinc-600"> — {sourceLabel(p.source)} ({p.engagement} eng)</span>
                   </li>
                 ))}
               </ul>
             </div>
           )}
+
+          {/* Image Prompt */}
+          <div className="border-t border-zinc-800 pt-2">
+            <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">AI Image Prompt</div>
+            <p className="text-[10px] text-zinc-500 font-mono leading-relaxed">{concept.imagePrompt}</p>
+          </div>
         </div>
       )}
 
       {/* Create Token Button */}
       <div className="mt-4 flex justify-end">
         <button
-          onClick={() => onCreateToken(opportunity)}
+          onClick={() => onCreateToken(concept)}
           className="rounded-lg bg-fuchsia-600 px-5 py-2 font-mono text-sm font-bold text-white transition-colors hover:bg-fuchsia-500"
         >
           Create Token
@@ -248,53 +199,53 @@ function OpportunityCard({ opportunity, index, onCreateToken }: { opportunity: L
 interface TrendingSuggestorProps { api: BundleApi }
 
 export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
-  const { opportunities, loading, error, lastRefresh, refresh, isScraping } = useIntelDiscovery();
+  const { concepts, loading, error, lastRefresh, refresh, isScraping } = useIntelDiscovery();
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedOpportunity, setSelectedOpportunity] = useState<LaunchOpportunity | null>(null);
+  const [selectedConcept, setSelectedConcept] = useState<MemeConcept | null>(null);
   const [copied, setCopied] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
-  const handleCreateToken = useCallback((o: LaunchOpportunity) => {
-    setSelectedOpportunity(o);
+  const handleCreateToken = useCallback((c: MemeConcept) => {
+    setSelectedConcept(c);
     setModalOpen(true);
   }, []);
 
   const handleLaunch = useCallback((data: LaunchModalData) => {
-    if (selectedOpportunity) {
+    if (selectedConcept) {
       void api.launchMemeCoin(data.name, data.ticker, data.description, data.imageUrl, data.buyAmount);
     }
     setModalOpen(false);
-    setSelectedOpportunity(null);
-  }, [api, selectedOpportunity]);
+    setSelectedConcept(null);
+  }, [api, selectedConcept]);
 
-  const handleCancel = useCallback(() => { setModalOpen(false); setSelectedOpportunity(null); }, []);
+  const handleCancel = useCallback(() => { setModalOpen(false); setSelectedConcept(null); }, []);
 
   const handleCopy = useCallback(() => {
-    if (opportunities.length === 0) return;
-    const text = opportunities.map((o, i) => {
-      return `#${i + 1} ${o.narrative} (${o.suggestedTicker})\nLaunch Score: ${o.launchScore} | Probability: ${o.launchProbability}%\nCompetition: ${o.competition.saturation} (${o.competition.existingTokens} tokens)\nRecommendation: ${o.competition.recommendation}\nMentions: ${o.mentionCount} | Authors: ${o.uniqueAuthors} | Growth: +${o.growthVelocity}%\nPlatforms: ${o.sourcesFound.join(', ')}\nWhy: ${o.whyThisIsBecomingViral}`;
+    if (concepts.length === 0) return;
+    const text = concepts.map((c, i) => {
+      return `#${i + 1} ${c.name} (${c.ticker})\nLaunch Score: ${c.launchScore} | Chance: ${c.estimatedChance}\nOne-liner: ${c.oneSentence}\nCore Joke: ${c.coreJoke}\nCore Emotion: ${c.coreEmotion}\nCompetition: ${c.existingTokens} existing tokens\nOriginality: ${c.originalityScore} | Virality: ${c.viralityScore} | Visual: ${c.visualPotential}\nBrandability: ${c.brandability} | Community: ${c.communityFit}\nMascot: ${c.mascot}\nImage Prompt: ${c.imagePrompt}`;
     }).join('\n\n---\n\n');
     navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  }, [opportunities]);
+  }, [concepts]);
 
-  const initialData = selectedOpportunity ? {
-    name: selectedOpportunity.suggestedName,
-    ticker: selectedOpportunity.suggestedTicker,
-    description: selectedOpportunity.oneSentenceDescription,
+  const initialData = selectedConcept ? {
+    name: selectedConcept.name,
+    ticker: selectedConcept.ticker,
+    description: selectedConcept.oneSentence,
     imageUrl: '',
-    theme: selectedOpportunity.category,
-    tags: selectedOpportunity.narrative.toLowerCase(),
-    logoPrompt: '',
-    bannerPrompt: '',
+    theme: selectedConcept.narrative,
+    tags: selectedConcept.name.toLowerCase(),
+    logoPrompt: selectedConcept.imagePrompt,
+    bannerPrompt: selectedConcept.imagePrompt,
   } : undefined;
 
   return (
     <div>
       <div className="mb-5 flex items-center justify-between">
         <div>
-          <h2 className="font-mono text-lg font-bold text-zinc-100">Launch Opportunity Engine</h2>
+          <h2 className="font-mono text-lg font-bold text-zinc-100">Crypto Meme Creation Engine</h2>
           <p className="text-xs text-zinc-500">
-            Finding viral ideas BEFORE they become tokens
+            Inventing NEW meme coin concepts — not detecting existing ones
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -313,7 +264,7 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
             className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-zinc-800 disabled:opacity-40">
             {loading ? <Spinner className="h-3 w-3" /> : '↻ Refresh'}
           </button>
-          <button onClick={handleCopy} disabled={opportunities.length === 0}
+          <button onClick={handleCopy} disabled={concepts.length === 0}
             className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-zinc-800 disabled:opacity-40">
             {copied ? '✓ Copied!' : '⧉ Copy Report'}
           </button>
@@ -332,19 +283,19 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
         </div>
       )}
 
-      {loading && opportunities.length === 0 ? (
+      {loading && concepts.length === 0 ? (
         <div className="flex items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-800 py-24 text-sm text-zinc-600">
           <Spinner className="h-5 w-5" />
-          {isScraping ? 'Scanning the internet for viral narratives... This may take a moment on first load.' : 'Loading...'}
+          {isScraping ? 'Scanning crypto communities for emerging narratives...' : 'Loading...'}
         </div>
-      ) : opportunities.length === 0 ? (
+      ) : concepts.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 py-24 text-center text-sm text-zinc-600">
-          {error || 'No launch opportunities found. The engine is scanning for viral narratives.'}
+          {error || 'No concepts found. The engine is scanning for emerging narratives.'}
         </div>
       ) : (
         <div className="space-y-4">
-          {opportunities.map((o, i) => (
-            <OpportunityCard key={o.id} opportunity={o} index={i} onCreateToken={handleCreateToken} />
+          {concepts.map((c, i) => (
+            <ConceptCard key={c.id} concept={c} index={i} onCreateToken={handleCreateToken} />
           ))}
         </div>
       )}
@@ -352,17 +303,17 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
       <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/30 p-5">
         <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-3">How It Works</div>
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-xs text-zinc-500">
-          <div><span className="font-semibold text-zinc-400">1. Collect</span> — Scans Reddit, Bluesky, Mastodon, Lemmy for viral cultural discussions</div>
-          <div><span className="font-semibold text-zinc-400">2. Classify</span> — Rejects news, politics, tech, crypto generic. Only memes and cultural content continue.</div>
-          <div><span className="font-semibold text-zinc-400">3. Detect Concepts</span> — Finds complete ideas: "Italian Brainrot Shark", not just "brainrot" or "shark"</div>
-          <div><span className="font-semibold text-zinc-400">4. Score Opportunity</span> — Evaluates virality, narrative strength, originality, image potential, competition, brandability</div>
-          <div><span className="font-semibold text-zinc-400">5. Launch</span> — Top 15 pre-token opportunities. Click "Create Token" to auto-generate everything.</div>
+          <div><span className="font-semibold text-zinc-400">1. Collect</span> — Scans crypto Twitter, Reddit, Bluesky for emerging narratives and frustrations</div>
+          <div><span className="font-semibold text-zinc-400">2. Detect Narratives</span> — Finds themes like "gas fee frustration" or "AI anxiety" — NOT existing meme coins</div>
+          <div><span className="font-semibold text-zinc-400">3. Invent Concepts</span> — Creates NEW meme coin ideas from each narrative: name, ticker, joke, mascot, image prompt</div>
+          <div><span className="font-semibold text-zinc-400">4. Score for Launch</span> — Originality 25%, Virality 20%, Visual 15%, Narrative 15%, Brand 10%, Community 10%, Competition 5%</div>
+          <div><span className="font-semibold text-zinc-400">5. Launch</span> — Top 15 concepts ranked by launch score. Click "Create Token" to auto-generate everything.</div>
         </div>
       </div>
 
       <LaunchModal
         open={modalOpen}
-        title={`Create Token: ${selectedOpportunity?.narrative ?? ''}`}
+        title={`Create Token: ${selectedConcept?.name ?? ''}`}
         initialData={initialData}
         busy={api.busy}
         onLaunch={handleLaunch}

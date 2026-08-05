@@ -61,11 +61,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   if (action === 'status') {
     const dbOk = hasRedis() ? await healthCheck() : false;
-    let opportunityCount = 0;
+    let conceptCount = 0;
     if (hasRedis()) {
       try {
         const r = await loadReport();
-        if (r) opportunityCount = r.opportunities.length;
+        if (r) conceptCount = r.concepts.length;
       } catch { /* ignore */ }
     }
     sendJson(res, 200, {
@@ -81,11 +81,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             totalPosts: lastScrape.totalPosts,
             totalAccepted: lastScrape.totalAccepted,
             totalRejected: lastScrape.totalRejected,
-            opportunities: lastScrape.report?.opportunities.length ?? 0,
+            concepts: lastScrape.report?.concepts.length ?? 0,
             providers: lastScrape.providers,
           }
         : null,
-      reportOpportunities: opportunityCount,
+      reportConcepts: conceptCount,
     });
     return;
   }
@@ -124,7 +124,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           ok: true,
           report: null,
           source: 'intel',
-          message: 'No launch opportunities found. The engine is scanning for viral narratives.',
+          message: 'No concepts found. The engine is scanning for emerging narratives.',
         });
         return;
       }

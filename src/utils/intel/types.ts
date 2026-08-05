@@ -1,15 +1,4 @@
-export interface CompetitionData {
-  existingTokens: number;
-  deadTokens: number;
-  successfulTokens: number;
-  copies: number;
-  forks: number;
-  saturation: 'none' | 'low' | 'medium' | 'high' | 'saturated';
-  recommendation: 'launch_immediately' | 'launch_soon' | 'wait' | 'do_not_launch';
-  recommendationReason: string;
-}
-
-export interface SupportingPost {
+export interface EvidencePost {
   title: string;
   source: string;
   author: string;
@@ -17,78 +6,80 @@ export interface SupportingPost {
   timestamp: number;
 }
 
-export interface GrowthBucket {
-  time: number;
-  count: number;
-}
-
-export interface LaunchOpportunity {
+export interface MemeConcept {
   id: string;
 
+  name: string;
+  ticker: string;
+  oneSentence: string;
+  coreJoke: string;
+  coreEmotion: string;
+
   narrative: string;
-  suggestedName: string;
-  suggestedTicker: string;
-  oneSentenceDescription: string;
+  narrativeContext: string;
+
+  targetAudience: string;
+  communityType: string;
+
+  mascot: string;
+  visualStyle: string;
+  logoConcept: string;
+  imagePrompt: string;
 
   launchScore: number;
-  viralityScore: number;
-  narrativeStrength: number;
-  growthVelocity: number;
-  communityDiversity: number;
-  crossPlatformSpread: number;
   originalityScore: number;
-  imagePotential: number;
+  viralityScore: number;
+  visualPotential: number;
+  narrativeStrength: number;
   brandability: number;
-  mascotPotential: number;
-  tickerQuality: number;
-  momentum: number;
-  launchProbability: number;
+  communityFit: number;
+  competitionLevel: number;
 
-  competition: CompetitionData;
+  existingTokens: number;
+  competitionNote: string;
 
-  mentionCount: number;
-  uniqueAuthors: number;
-  sourcesFound: string[];
+  supportingSignals: string[];
+  postsUsed: EvidencePost[];
+  sourcesScanned: string[];
+
+  generatedAt: number;
+  estimatedChance: string;
+}
+
+export interface NarrativeSignal {
+  theme: string;
+  strength: number;
+  postCount: number;
   sourceCount: number;
-  socialPlatforms: string[];
-
-  firstDetected: number;
-  lastSeen: number;
-
-  summary: string;
-  coreCharacters: string[];
-  runningJoke: string;
-  repeatedCatchphrases: string[];
-  relatedHashtags: string[];
-  whyThisIsBecomingViral: string;
-
-  topPostTitles: string[];
-  supportingPosts: SupportingPost[];
-  evidence: string[];
-  category: string;
-  growthTimeline: GrowthBucket[];
+  emotion: string;
 }
 
 export interface PipelineDiagnostics {
   collectedPosts: number;
+  cryptoPosts: number;
   memePosts: number;
-  culturalPosts: number;
+  newsPosts: number;
   rejectedPosts: number;
-  phrasesExtracted: number;
-  narrativeClusters: number;
-  passedFilter: number;
-  topOpportunities: number;
-  pipelineFlow: string[];
+  narrativesDetected: number;
+  conceptsGenerated: number;
+  conceptsFiltered: number;
+  topConcepts: number;
 }
 
-export interface NarrativeReport {
+export interface ConceptReport {
   generatedAt: number;
-  opportunities: LaunchOpportunity[];
+  concepts: MemeConcept[];
+  narrativesDetected: NarrativeSignal[];
   postsProcessed: number;
   sourcesScanned: string[];
   windowHours: number;
   diagnostics: PipelineDiagnostics;
 }
 
-export interface IntelReport extends NarrativeReport {}
-export type MemeNarrative = LaunchOpportunity;
+// Legacy aliases
+export type MemeNarrative = MemeConcept;
+export type IntelReport = ConceptReport;
+export type NarrativeCluster = never;
+export type LaunchOpportunity = MemeConcept;
+export type NarrativeReport = ConceptReport;
+export type CompetitionData = never;

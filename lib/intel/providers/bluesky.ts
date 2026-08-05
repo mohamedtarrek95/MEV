@@ -1,11 +1,21 @@
 import type { ITrendProvider, RawPost } from '../types.js';
 
+// Crypto + meme queries for Bluesky.
+// Crypto signals tell us what traders are thinking.
+// Meme signals tell us what culture is doing.
 const QUERIES = [
+  // ── Crypto Trading (HIGH PRIORITY) ──
+  'crypto meme', 'solana meme', 'pump.fun', 'memecoin',
+  'crypto trading', 'defi', 'web3',
+  'bullish', 'bearish', 'moon', 'rugpull',
+  // ── Meme Culture ──
   'meme', 'brainrot', 'viral', 'shitpost',
   'pepe', 'doge', 'bonk', 'wojak', 'sigma',
-  'crypto meme', 'solana meme', 'pump.fun',
   'italian brainrot', 'skibidi', 'rizz',
-  'ai meme', 'cat meme', 'dog meme',
+  // ── AI / Tech (context for AI meme coins) ──
+  'ai meme', 'chatgpt', 'openai', 'agi',
+  // ── Internet Culture ──
+  'cat meme', 'dog meme', 'funny',
 ];
 
 export class BlueskyProvider implements ITrendProvider {

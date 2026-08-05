@@ -1,6 +1,6 @@
 import { createAllProviders } from './providers/index.js';
 import { analyzeNarratives } from './engine.js';
-import type { LaunchOpportunity, NarrativeReport, RawPost, ITrendProvider } from './types.js';
+import type { MemeConcept, ConceptReport, RawPost, ITrendProvider } from './types.js';
 
 export interface ProviderStatus {
   name: string;
@@ -17,7 +17,7 @@ export interface ProviderStatus {
 
 export interface ScrapeResult {
   posts: RawPost[];
-  report: NarrativeReport | null;
+  report: ConceptReport | null;
   providers: ProviderStatus[];
   totalPosts: number;
   totalAccepted: number;
@@ -101,7 +101,7 @@ async function fetchProvider(provider: ITrendProvider): Promise<{ posts: RawPost
 export async function scrapeAll(): Promise<ScrapeResult> {
   const overallStart = Date.now();
   const providers = createAllProviders();
-  console.log(`[launch-engine] scanning ${providers.length} meme sources...`);
+  console.log(`[launch-engine] scanning ${providers.length} sources...`);
 
   const results = await Promise.allSettled(providers.map((p) => fetchProvider(p)));
 
@@ -121,31 +121,32 @@ export async function scrapeAll(): Promise<ScrapeResult> {
     }
   }
 
-  const opportunities = analyzeNarratives(allPosts);
+  const concepts = analyzeNarratives(allPosts);
   const now = Date.now();
 
-  const report: NarrativeReport = {
+  const report: ConceptReport = {
     generatedAt: now,
-    opportunities,
+    concepts,
+    narrativesDetected: [],
     postsProcessed: allPosts.length,
     sourcesScanned: providerStatuses.filter((s) => s.acceptedPosts > 0).map((s) => s.sourceId),
     windowHours: 24,
     diagnostics: {
       collectedPosts: allPosts.length,
+      cryptoPosts: 0,
       memePosts: 0,
-      culturalPosts: 0,
+      newsPosts: 0,
       rejectedPosts: 0,
-      phrasesExtracted: 0,
-      narrativeClusters: 0,
-      passedFilter: opportunities.length,
-      topOpportunities: opportunities.length,
-      pipelineFlow: [],
+      narrativesDetected: 0,
+      conceptsGenerated: 0,
+      conceptsFiltered: concepts.length,
+      topConcepts: concepts.length,
     },
   };
 
   const durationMs = now - overallStart;
   console.log(
-    `[launch-engine] complete: ${allPosts.length} posts → ${opportunities.length} launch opportunities (${durationMs}ms)`,
+    `[launch-engine] complete: ${allPosts.length} posts → ${concepts.length} meme concepts (${durationMs}ms)`,
   );
 
   return {
