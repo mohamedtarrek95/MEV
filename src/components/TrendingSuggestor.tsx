@@ -37,16 +37,23 @@ function NarrativeCard({ narrative, index, onCreateToken }: { narrative: MemeNar
   const [expanded, setExpanded] = useState(false);
   const token = generateToken(narrative);
   const initials = token.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  const rankBadgeColor = index < 3 ? 'border-fuchsia-500/50 bg-fuchsia-950/50 text-fuchsia-300'
+    : index < 7 ? 'border-cyan-500/40 bg-cyan-950/40 text-cyan-300'
+    : 'border-zinc-700 bg-zinc-800 text-zinc-400';
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 transition-colors hover:border-zinc-700">
       <div className="flex items-start gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 font-mono text-sm font-black text-zinc-300">
-          {initials}
+        <div className="flex flex-col items-center gap-1">
+          <span className={`flex h-8 w-8 items-center justify-center rounded-lg border font-mono text-xs font-black ${rankBadgeColor}`}>
+            #{index + 1}
+          </span>
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 font-mono text-sm font-black text-zinc-300">
+            {initials}
+          </div>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs font-bold text-zinc-600">#{index + 1}</span>
             <h3 className="font-mono text-base font-bold text-zinc-100">{narrative.narrative}</h3>
             <span className="font-mono text-xs font-semibold text-fuchsia-400">${token.symbol}</span>
             <ConfidenceBadge pct={narrative.confidencePct} />
@@ -54,14 +61,20 @@ function NarrativeCard({ narrative, index, onCreateToken }: { narrative: MemeNar
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Score</div>
-          <div className="font-mono text-3xl font-black text-fuchsia-400">{narrative.trendScore}</div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Quality</div>
+          <div className="font-mono text-3xl font-black text-fuchsia-400">{narrative.qualityScore}</div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mt-1">Trend</div>
+          <div className="font-mono text-lg font-bold text-zinc-400">{narrative.trendScore}</div>
         </div>
       </div>
 
       <p className="mt-3 text-xs text-zinc-400 leading-relaxed">{narrative.reason}</p>
 
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-6 gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600">Quality Score</div>
+          <ScoreBar score={narrative.qualityScore} />
+        </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-zinc-600">Trend Score</div>
           <ScoreBar score={narrative.trendScore} />
@@ -182,7 +195,7 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
     if (narratives.length === 0) return;
     const text = narratives.map((n, i) => {
       const t = generateToken(n);
-      return `#${i + 1} ${n.narrative} ($${t.symbol})\nTrend Score: ${n.trendScore}\nConfidence: ${n.confidencePct}%\nMentions: ${n.mentionCount} | Growth: +${n.growthPct}% | Authors: ${n.uniqueAuthors}\nSources: ${n.sourcesFound.map(sourceLabel).join(', ')}\nReason: ${n.reason}`;
+      return `#${i + 1} ${n.narrative} ($${t.symbol})\nQuality: ${n.qualityScore} | Trend Score: ${n.trendScore}\nConfidence: ${n.confidencePct}%\nMentions: ${n.mentionCount} | Growth: +${n.growthPct}% | Authors: ${n.uniqueAuthors}\nSources: ${n.sourcesFound.map(sourceLabel).join(', ')}\nReason: ${n.reason}`;
     }).join('\n\n---\n\n');
     navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }, [narratives]);
@@ -260,10 +273,10 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
       <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/30 p-5">
         <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-3">How It Works</div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs text-zinc-500">
-          <div><span className="font-semibold text-zinc-400">1. Auto-Collect</span> — API scrapes Reddit, Bluesky, Hacker News, DexScreener, CoinGecko, GitHub on every request (no manual worker needed)</div>
-          <div><span className="font-semibold text-zinc-400">2. Analyze</span> — Normalizes text, extracts phrases, clusters similar topics, detects patterns using fuzzy matching</div>
-          <div><span className="font-semibold text-zinc-400">3. Score</span> — Trend Score from mentions, growth, velocity, cross-platform spread, freshness. Confidence from real evidence only.</div>
-          <div><span className="font-semibold text-zinc-400">4. Create</span> — Click "Create Token" to auto-generate name, ticker, description, mascot, and prompts</div>
+          <div><span className="font-semibold text-zinc-400">1. Auto-Collect</span> — Scrapes Reddit, Bluesky, Hacker News, DexScreener, CoinGecko, GitHub on every request</div>
+          <div><span className="font-semibold text-zinc-400">2. Filter &amp; Dedupe</span> — Discards low-quality noise, merges duplicates (e.g. PEPE / $PEPE / Pepe Coin), removes generic phrases</div>
+          <div><span className="font-semibold text-zinc-400">3. Quality Score</span> — Weighted ranking: cross-platform diversity (35%), authors (20%), growth (15%), velocity (10%), engagement (10%), freshness (5%), confidence (5%)</div>
+          <div><span className="font-semibold text-zinc-400">4. Create</span> — Top 15 verified opportunities shown. Click "Create Token" to auto-generate name, ticker, description, mascot, and prompts</div>
         </div>
       </div>
 

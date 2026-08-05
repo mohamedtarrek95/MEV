@@ -463,7 +463,141 @@ function generateEvidence(cluster: Cluster): string[] {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 6: CATEGORY DETECTION
+// SECTION 6: QUALITY FILTER & DEDUPLICATION
+// ══════════════════════════════════════════════════════════════════════
+
+const MAX_NARRATIVES = 15;
+
+const GENERIC_PHRASES = new Set([
+  'crypto','blockchain','web3','defi','nft','token','coin','dex','amm',
+  'staking','yield','farming','liquidity','pool','swap','bridge','mint',
+  'burn','airdrop','faucet','gas','gwei','wei','lamports','sol','usdc',
+  'usdt','dai','eth','btc','ada','dot','avax','matic','link','uni',
+  'aave','comp','snx','crv','sushi','cake','xvs','venus','anchor',
+  'mirror','terraswap','osmosis','juno','stargaze','mars','neutron',
+  'sei','sui','aptos','move','rust','solana','ethereum','bitcoin',
+  'base','bnb','polygon','arbitrum','optimism','avalanche','cardano',
+  'trending','trend','gainers','losers','volume','liquidity','market',
+  'cap','fdv','tvl','holders','swaps','transactions','price','change',
+  '24h','7d','1h','30m','boosted','new','pairs','coins','tokens',
+  'showhn','launchedon','boostedon','seemore','viewmore','exploreall',
+  'rank','top','bottom','best','worst','first','last','next','prev',
+  'general','random','stuff','things','something','anything','nothing',
+  'update','news','breaking','alert','warning','notice','info','data',
+  'result','results','list','item','entry','number','status','system',
+  'check','test','demo','example','sample','placeholder','lorem','ipsum',
+]);
+
+const PLATFORM_LABELS = new Set([
+  'reddit','bluesky','twitter','x','telegram','discord','youtube','tiktok',
+  'instagram','facebook','snapchat','twitch','pinterest','linkedin',
+  'coingecko','dexscreener','github','hackernews','hacker news','lobste.rs',
+  'show hn','ask hn','hn','lobsters',
+]);
+
+const TOKEN_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const SYMBOL_PATTERN = /^[A-Z]{1,6}$/;
+const GENERIC_WORDS = new Set([
+  'the','and','for','are','but','not','you','all','can','had','her','was',
+  'one','our','out','day','get','has','him','his','how','its','may','new',
+  'now','old','see','way','who','did','got','let','say','she','too','use',
+  'web','app','use','run','set','try','ask','men','buy','eye','job','pay',
+  'lot','big','few','top','end','put','own','say','low','run','got','bit',
+  'act','add','age','ago','air','arm','art','ask','ate','bad','bag','bar',
+  'bat','bed','bit','bow','box','boy','bud','bug','bus','cab','car','cat',
+  'cup','cut','dad','dab','dam','dig','dim','dip','dog','dot','dry','dub',
+  'dug','dye','ear','eat','egg','elf','elk','elm','emu','end','era','eve',
+  'ewe','eye','fan','far','fat','fax','fed','fee','few','fig','fin','fir',
+  'fit','fix','fly','fog','fox','fun','fur','gag','gap','gas','gel','gem',
+  'gin','gnu','god','got','gum','gun','gut','guy','gym','had','ham','has',
+  'hat','hay','hen','her','hew','hex','hid','him','hip','his','hit','hog',
+  'hop','hot','how','hub','hue','hug','hum','hut','ice','icy','ilk','ill',
+  'imp','ink','inn','ion','ire','irk','ivy','jab','jag','jam','jar','jaw',
+  'jay','jet','jig','job','jog','jot','joy','jug','jut','keg','key','kid',
+  'kin','kit','lab','lad','lag','lap','law','lay','led','leg','let','lid',
+  'lie','lip','lit','log','lop','lot','low','lug','mad','man','map','mar',
+  'mat','maw','max','may','men','met','mid','mix','mob','mom','mop','mow',
+  'mud','mug','nab','nag','nap','net','new','nil','nip','nod','nor','not',
+  'now','nun','nut','oak','oar','oat','odd','ode','off','oft','ohm','oil',
+  'old','one','opt','orb','ore','our','out','owe','owl','own','pad','pal',
+  'pan','pap','par','pat','paw','pay','pea','peg','pen','pep','per','pet',
+  'pie','pig','pin','pit','ply','pod','pop','pot','pow','pro','pry','pub',
+  'pug','pun','pup','pus','put','rag','ram','ran','rap','rat','raw','ray',
+  'red','ref','rev','rib','rid','rig','rim','rip','rob','rod','roe','rot',
+  'row','rub','rug','rum','run','rut','rye','sac','sad','sag','sap','sat',
+  'saw','say','sea','set','sew','she','shy','sin','sip','sir','sis','sit',
+  'six','ski','sky','sly','sob','sod','son','sop','sot','sow','soy','spa',
+  'spy','sty','sub','sue','sum','sun','sup','tab','tad','tag','tan','tap',
+  'tar','tat','tax','tea','ten','the','thy','tic','tie','tin','tip','toe',
+  'ton','too','top','tot','tow','toy','try','tub','tug','two','urn','use',
+  'van','vat','vet','vex','via','vie','vim','vow','wad','wag','war','was',
+  'wax','way','web','wed','wet','who','why','wig','win','wit','woe','wok',
+  'won','woo','wop','wow','yak','yam','yap','yaw','yea','yes','yet','yew',
+  'yin','you','zap','zed','zen','zig','zip','zoo',
+]);
+
+function normalizeNarrativeName(name: string): string {
+  let norm = name.toLowerCase().trim();
+  norm = norm.replace(/^[\$#]+/g, '');
+  norm = norm.replace(/\s+(coin|token|project|protocol|chain|network)$/i, '');
+  norm = norm.replace(/[^a-z0-9\s]/g, '');
+  norm = norm.replace(/\s+/g, ' ').trim();
+  return norm;
+}
+
+function isLowQuality(cluster: Cluster): boolean {
+  if (cluster.sources.size < 2) return true;
+  if (cluster.authors.size < 3) return true;
+  if (cluster.totalMentions < 5) return true;
+
+  const name = normalizeNarrativeName(cluster.canonicalName);
+  const words = name.split(/\s+/);
+
+  if (words.length === 1 && GENERIC_WORDS.has(words[0])) return true;
+  if (GENERIC_PHRASES.has(name)) return true;
+  for (const w of words) {
+    if (GENERIC_PHRASES.has(w)) return true;
+    if (PLATFORM_LABELS.has(w)) return true;
+  }
+  if (PLATFORM_LABELS.has(name)) return true;
+
+  if (TOKEN_ADDRESS_RE.test(name.replace(/\s/g, ''))) return true;
+  if (words.length <= 2 && words.every((w) => SYMBOL_PATTERN.test(w))) return true;
+
+  const hexPattern = /^(0x)?[0-9a-f]{8,}$/i;
+  if (hexPattern.test(name.replace(/\s/g, ''))) return true;
+
+  if (name.split(/\s+/).every((w) => GENERIC_WORDS.has(w))) return true;
+
+  return false;
+}
+
+function computeQualityScore(cluster: Cluster, now: number): number {
+  const platformDiversity = Math.min(cluster.sources.size / 4, 1);
+  const authorScore = Math.min(cluster.authors.size / 30, 1);
+  const growthPct = computeGrowthPct(cluster, now);
+  const growthScore = Math.min(Math.max(growthPct, 0) / 500, 1);
+  const velocity = computeVelocity(cluster);
+  const velocityScore = Math.min(velocity / 10, 1);
+  const engagementScore = Math.min(cluster.totalEngagement / 1000, 1);
+  const ageHours = (now - cluster.lastSeen) / 3600000;
+  const freshnessScore = Math.max(0, 1 - ageHours / 24);
+  const confidence = computeConfidence(cluster, now) / 100;
+
+  const raw =
+    platformDiversity * 0.35 +
+    authorScore * 0.20 +
+    growthScore * 0.15 +
+    velocityScore * 0.10 +
+    engagementScore * 0.10 +
+    freshnessScore * 0.05 +
+    confidence * 0.05;
+
+  return Math.round(raw * 10000) / 100;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// SECTION 7: CATEGORY DETECTION
 // ══════════════════════════════════════════════════════════════════════
 
 const WORD_MAP: Record<string, string> = {
@@ -513,23 +647,49 @@ function capitalize(s: string): string {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 7: MAIN ANALYSIS
+// SECTION 8: MAIN ANALYSIS
 // ══════════════════════════════════════════════════════════════════════
 
 export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
   const now = Date.now();
   const clusters = clusterPosts(posts);
-  const narratives: MemeNarrative[] = [];
 
+  const deduped = new Map<string, Cluster>();
   for (const cluster of clusters) {
-    if (cluster.totalMentions < 2) continue;
-    if (cluster.sources.size < 1) continue;
+    const normKey = normalizeNarrativeName(cluster.canonicalName);
+    if (!normKey) continue;
+    if (isLowQuality(cluster)) continue;
 
     const trendScore = computeTrendScore(cluster, now);
-    if (trendScore < 5) continue;
+    if (trendScore < 50) continue;
 
+    const confidencePct = computeConfidence(cluster, now);
+    if (confidencePct < 60) continue;
+
+    const existing = deduped.get(normKey);
+    if (existing) {
+      existing.posts.push(...cluster.posts);
+      for (const a of cluster.authors) existing.authors.add(a);
+      for (const s of cluster.sources) existing.sources.add(s);
+      for (const [e, c] of cluster.entities) existing.entities.set(e, c);
+      existing.totalMentions += cluster.totalMentions;
+      existing.totalEngagement += cluster.totalEngagement;
+      existing.firstSeen = Math.min(existing.firstSeen, cluster.firstSeen);
+      existing.lastSeen = Math.max(existing.lastSeen, cluster.lastSeen);
+      if (cluster.canonicalName.length > existing.canonicalName.length) {
+        existing.canonicalName = cluster.canonicalName;
+      }
+    } else {
+      deduped.set(normKey, cluster);
+    }
+  }
+
+  const narratives: MemeNarrative[] = [];
+  for (const cluster of deduped.values()) {
+    const trendScore = computeTrendScore(cluster, now);
     const growthPct = computeGrowthPct(cluster, now);
     const confidencePct = computeConfidence(cluster, now);
+    const qualityScore = computeQualityScore(cluster, now);
     const category = detectCategory(cluster.canonicalName);
     const narrative = capitalize(cluster.canonicalName);
     const topPostTitles = [...cluster.posts]
@@ -553,8 +713,10 @@ export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
       evidence: generateEvidence(cluster),
       category,
       topPostTitles,
+      qualityScore,
     });
   }
 
-  return narratives.sort((a, b) => b.trendScore - a.trendScore);
+  narratives.sort((a, b) => b.qualityScore - a.qualityScore);
+  return narratives.slice(0, MAX_NARRATIVES);
 }

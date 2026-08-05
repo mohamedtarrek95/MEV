@@ -14,6 +14,7 @@ export interface MemeNarrative {
   evidence: string[];
   category: string;
   topPostTitles: string[];
+  qualityScore: number;
 }
 
 export interface IntelReport {
