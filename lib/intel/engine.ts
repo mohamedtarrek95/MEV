@@ -91,6 +91,23 @@ const FINANCIAL_METRICS = new Set([
 ]);
 
 // ══════════════════════════════════════════════════════════════════════
+// SECTION 2B: PROVIDER NOISE FILTERS
+// ══════════════════════════════════════════════════════════════════════
+
+const METADATA_LABELS = new Set([
+  'trending','trend','rank','top','gainers','losers','volume','liquidity',
+  'market','cap','fdv','tvl','holders','swaps','transactions','price',
+  'change','24h','7d','1h','30m','boosted','new','pairs','coins','tokens',
+  'topics','language','stars','forks','github','coingecko','dexscreener',
+  'solana','ethereum','bitcoin','base','bnb','polygon','arbitrum',
+  'show hn','ask hn','hacker news','lobsters','lobste.rs',
+]);
+
+const COINGECKO_NOISE_RE = /^(trending|trending coins|trending tokens|top coins|popular|gainers|losers|by 24h|by market cap|by volume|by price|by change)$/i;
+const DEXSCREENER_NOISE_RE = /^(boosted|trending|top boosted|new pairs|new listings|most traded|highest volume|trending on|boosted on)$/i;
+const GITHUB_NOISE_RE = /^(trending|trending repos|trending today|trending this week|popular|new|created|stars|forks)$/i;
+
+// ══════════════════════════════════════════════════════════════════════
 // SECTION 3: CONTENT CLASSIFIER
 // ══════════════════════════════════════════════════════════════════════
 
@@ -267,8 +284,55 @@ function classifyText(text: string): ContentType {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 4: CLUSTERING
+// SECTION 4: TOKEN NAME NORMALIZATION & CLUSTERING
 // ══════════════════════════════════════════════════════════════════════
+
+const TOKEN_SUFFIX_RE = /\s*(coin|token|project|protocol|chain|network|inu|finance|protocol|dao|labs|verse|swap|pad|market|exchange)$/i;
+const TOKEN_PREFIX_RE = /^[\$#\s]+/;
+const KNOWN_TOKEN_ALIASES: Record<string, string> = {
+  'pepe': 'pepe',
+  'pepe coin': 'pepe',
+  'pepecoin': 'pepe',
+  'pepe the frog': 'pepe',
+  'bonk': 'bonk',
+  'bonk coin': 'bonk',
+  'bonkcoin': 'bonk',
+  'doge': 'doge',
+  'dogecoin': 'doge',
+  'doge coin': 'doge',
+  'shiba': 'shiba',
+  'shiba inu': 'shiba',
+  'shib': 'shiba',
+  'shibainu': 'shiba',
+  'wojak': 'wojak',
+  'wojak coin': 'wojak',
+  'wojakcoin': 'wojak',
+  'dogwifhat': 'dogwifhat',
+  'dog wif hat': 'dogwifhat',
+  'cat in a dogs world': 'cat in a dogs world',
+  'meow': 'cat in a dogs world',
+  'popcat': 'popcat',
+  'pop cat': 'popcat',
+  'brett': 'brett',
+  'brett on base': 'brett',
+  'mog': 'mog',
+  'mog coin': 'mog',
+  'mogcoin': 'mog',
+  'bome': 'bome',
+  'book of meme': 'bome',
+  'bookofmeme': 'bome',
+  'wif': 'wif',
+  'bONK': 'bonk',
+};
+
+function normalizeTokenName(name: string): string {
+  let norm = name.toLowerCase().trim();
+  norm = norm.replace(TOKEN_PREFIX_RE, '');
+  norm = norm.replace(TOKEN_SUFFIX_RE, '');
+  norm = norm.replace(/[^a-z0-9\s]/g, '');
+  norm = norm.replace(/\s+/g, ' ').trim();
+  return norm;
+}
 
 function clusterKey(s: string): string {
   return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').trim();
@@ -389,8 +453,63 @@ function clusterPosts(posts: RawPost[]): Cluster[] {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// SECTION 4B: ENTITY-BASED CLUSTER MERGING
+// ══════════════════════════════════════════════════════════════════════
+
+function mergeByEntities(clusters: Cluster[]): Cluster[] {
+  const entityMap = new Map<string, Cluster[]>();
+  for (const c of clusters) {
+    for (const [entity] of c.entities) {
+      const norm = normalizeTokenName(entity);
+      if (norm.length < 2) continue;
+      const existing = entityMap.get(norm) ?? [];
+      existing.push(c);
+      entityMap.set(norm, existing);
+    }
+  }
+
+  const mergedInto = new Set<string>();
+  const result: Cluster[] = [];
+
+  for (const [entity, group] of entityMap) {
+    if (group.length < 2) continue;
+
+    group.sort((a, b) => b.totalMentions - a.totalMentions);
+    const primary = group[0];
+
+    for (let i = 1; i < group.length; i++) {
+      const secondary = group[i];
+      if (mergedInto.has(secondary.key)) continue;
+
+      primary.phrases.push(...secondary.phrases);
+      primary.posts.push(...secondary.posts);
+      for (const a of secondary.authors) primary.authors.add(a);
+      for (const s of secondary.sources) primary.sources.add(s);
+      for (const [e, c] of secondary.entities) primary.entities.set(e, c);
+      primary.totalMentions += secondary.totalMentions;
+      primary.totalEngagement += secondary.totalEngagement;
+      primary.firstSeen = Math.min(primary.firstSeen, secondary.firstSeen);
+      primary.lastSeen = Math.max(primary.lastSeen, secondary.lastSeen);
+      if (secondary.canonicalName.length > primary.canonicalName.length) {
+        primary.canonicalName = secondary.canonicalName;
+      }
+      mergedInto.add(secondary.key);
+    }
+  }
+
+  for (const c of clusters) {
+    if (!mergedInto.has(c.key)) {
+      result.push(c);
+    }
+  }
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // SECTION 5: VALIDATION & SCORING
 // ══════════════════════════════════════════════════════════════════════
+
+const TRUSTED_SOURCES = new Set(['reddit', 'bluesky', 'dexscreener', 'pumpfun']);
 
 function computeGrowthPct(cluster: Cluster, now: number): number {
   const half = 12 * 3600 * 1000;
@@ -503,73 +622,62 @@ const GENERIC_WORDS = new Set([
   'now','old','see','way','who','did','got','let','say','she','too','use',
   'web','app','use','run','set','try','ask','men','buy','eye','job','pay',
   'lot','big','few','top','end','put','own','say','low','run','got','bit',
-  'act','add','age','ago','air','arm','art','ask','ate','bad','bag','bar',
-  'bat','bed','bit','bow','box','boy','bud','bug','bus','cab','car','cat',
-  'cup','cut','dad','dab','dam','dig','dim','dip','dog','dot','dry','dub',
-  'dug','dye','ear','eat','egg','elf','elk','elm','emu','end','era','eve',
-  'ewe','eye','fan','far','fat','fax','fed','fee','few','fig','fin','fir',
-  'fit','fix','fly','fog','fox','fun','fur','gag','gap','gas','gel','gem',
-  'gin','gnu','god','got','gum','gun','gut','guy','gym','had','ham','has',
-  'hat','hay','hen','her','hew','hex','hid','him','hip','his','hit','hog',
-  'hop','hot','how','hub','hue','hug','hum','hut','ice','icy','ilk','ill',
-  'imp','ink','inn','ion','ire','irk','ivy','jab','jag','jam','jar','jaw',
-  'jay','jet','jig','job','jog','jot','joy','jug','jut','keg','key','kid',
-  'kin','kit','lab','lad','lag','lap','law','lay','led','leg','let','lid',
-  'lie','lip','lit','log','lop','lot','low','lug','mad','man','map','mar',
-  'mat','maw','max','may','men','met','mid','mix','mob','mom','mop','mow',
-  'mud','mug','nab','nag','nap','net','new','nil','nip','nod','nor','not',
-  'now','nun','nut','oak','oar','oat','odd','ode','off','oft','ohm','oil',
-  'old','one','opt','orb','ore','our','out','owe','owl','own','pad','pal',
-  'pan','pap','par','pat','paw','pay','pea','peg','pen','pep','per','pet',
-  'pie','pig','pin','pit','ply','pod','pop','pot','pow','pro','pry','pub',
-  'pug','pun','pup','pus','put','rag','ram','ran','rap','rat','raw','ray',
-  'red','ref','rev','rib','rid','rig','rim','rip','rob','rod','roe','rot',
-  'row','rub','rug','rum','run','rut','rye','sac','sad','sag','sap','sat',
-  'saw','say','sea','set','sew','she','shy','sin','sip','sir','sis','sit',
-  'six','ski','sky','sly','sob','sod','son','sop','sot','sow','soy','spa',
-  'spy','sty','sub','sue','sum','sun','sup','tab','tad','tag','tan','tap',
-  'tar','tat','tax','tea','ten','the','thy','tic','tie','tin','tip','toe',
-  'ton','too','top','tot','tow','toy','try','tub','tug','two','urn','use',
-  'van','vat','vet','vex','via','vie','vim','vow','wad','wag','war','was',
-  'wax','way','web','wed','wet','who','why','wig','win','wit','woe','wok',
-  'won','woo','wop','wow','yak','yam','yap','yaw','yea','yes','yet','yew',
-  'yin','you','zap','zed','zen','zig','zip','zoo',
 ]);
 
 function normalizeNarrativeName(name: string): string {
   let norm = name.toLowerCase().trim();
   norm = norm.replace(/^[\$#]+/g, '');
-  norm = norm.replace(/\s+(coin|token|project|protocol|chain|network)$/i, '');
+  norm = norm.replace(TOKEN_SUFFIX_RE, '');
   norm = norm.replace(/[^a-z0-9\s]/g, '');
   norm = norm.replace(/\s+/g, ' ').trim();
   return norm;
 }
 
-function isLowQuality(cluster: Cluster): boolean {
-  if (cluster.sources.size < 2) return true;
-  if (cluster.authors.size < 3) return true;
-  if (cluster.totalMentions < 5) return true;
+function getRejectionReason(cluster: Cluster, now: number): string | null {
+  const normName = normalizeNarrativeName(cluster.canonicalName);
+  const words = normName.split(/\s+/);
 
-  const name = normalizeNarrativeName(cluster.canonicalName);
-  const words = name.split(/\s+/);
-
-  if (words.length === 1 && GENERIC_WORDS.has(words[0])) return true;
-  if (GENERIC_PHRASES.has(name)) return true;
-  for (const w of words) {
-    if (GENERIC_PHRASES.has(w)) return true;
-    if (PLATFORM_LABELS.has(w)) return true;
+  if (cluster.sources.size < 2) {
+    const allTrusted = [...cluster.sources].every((s) => TRUSTED_SOURCES.has(s));
+    const highEngagement = cluster.totalEngagement > 50;
+    if (!(allTrusted && highEngagement)) {
+      return `only ${cluster.sources.size} platform(s) (need 2+ unless trusted+high engagement)`;
+    }
   }
-  if (PLATFORM_LABELS.has(name)) return true;
+  if (cluster.authors.size < 2) return `only ${cluster.authors.size} unique author(s) (need 2+)`;
+  if (cluster.totalMentions < 3) return `only ${cluster.totalMentions} mention(s) (need 3+)`;
 
-  if (TOKEN_ADDRESS_RE.test(name.replace(/\s/g, ''))) return true;
-  if (words.length <= 2 && words.every((w) => SYMBOL_PATTERN.test(w))) return true;
+  if (words.length === 1 && GENERIC_WORDS.has(words[0])) return `generic word "${normName}"`;
+  if (GENERIC_PHRASES.has(normName)) return `generic phrase "${normName}"`;
+  for (const w of words) {
+    if (GENERIC_PHRASES.has(w)) return `contains generic word "${w}"`;
+    if (PLATFORM_LABELS.has(w)) return `contains platform label "${w}"`;
+  }
+  if (PLATFORM_LABELS.has(normName)) return `platform label "${normName}"`;
+
+  if (COINGECKO_NOISE_RE.test(normName)) return `CoinGecko metadata noise`;
+  if (DEXSCREENER_NOISE_RE.test(normName)) return `DexScreener metadata noise`;
+  if (GITHUB_NOISE_RE.test(normName)) return `GitHub metadata noise`;
+
+  if (TOKEN_ADDRESS_RE.test(normName.replace(/\s/g, ''))) return `token address`;
+  if (words.length <= 2 && words.every((w) => SYMBOL_PATTERN.test(w))) return `symbol-only name`;
 
   const hexPattern = /^(0x)?[0-9a-f]{8,}$/i;
-  if (hexPattern.test(name.replace(/\s/g, ''))) return true;
+  if (hexPattern.test(normName.replace(/\s/g, ''))) return `hex/hash pattern`;
 
-  if (name.split(/\s+/).every((w) => GENERIC_WORDS.has(w))) return true;
+  if (words.every((w) => GENERIC_WORDS.has(w))) return `all generic words`;
 
-  return false;
+  const trendScore = computeTrendScore(cluster, now);
+  if (trendScore < 30) return `trend score ${trendScore} below minimum 30`;
+
+  const confidencePct = computeConfidence(cluster, now);
+  if (confidencePct < 40) return `confidence ${confidencePct}% below minimum 40%`;
+
+  return null;
+}
+
+function isLowQuality(cluster: Cluster, now: number): boolean {
+  return getRejectionReason(cluster, now) !== null;
 }
 
 function computeQualityScore(cluster: Cluster, now: number): number {
@@ -652,22 +760,48 @@ function capitalize(s: string): string {
 
 export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
   const now = Date.now();
+
+  console.log(`[intel] === ANALYSIS START ===`);
+  console.log(`[intel] Total posts received: ${posts.length}`);
+
+  const bySource = new Map<string, number>();
+  for (const p of posts) bySource.set(p.source, (bySource.get(p.source) ?? 0) + 1);
+  for (const [src, count] of bySource) {
+    console.log(`[intel]   ${src}: ${count} posts`);
+  }
+
   const clusters = clusterPosts(posts);
+  console.log(`[intel] Clusters after phrase extraction + fuzzy merge: ${clusters.length}`);
+
+  const entityMerged = mergeByEntities(clusters);
+  console.log(`[intel] Clusters after entity-based merge: ${entityMerged.length}`);
+
+  const rejectCounts: Record<string, number> = {};
+  let genericCount = 0;
+  let duplicateCount = 0;
 
   const deduped = new Map<string, Cluster>();
-  for (const cluster of clusters) {
+  for (const cluster of entityMerged) {
     const normKey = normalizeNarrativeName(cluster.canonicalName);
-    if (!normKey) continue;
-    if (isLowQuality(cluster)) continue;
+    if (!normKey) {
+      console.log(`[intel] CLUSTER "${cluster.canonicalName}" -> REJECTED: empty normalized name`);
+      continue;
+    }
 
-    const trendScore = computeTrendScore(cluster, now);
-    if (trendScore < 50) continue;
-
-    const confidencePct = computeConfidence(cluster, now);
-    if (confidencePct < 60) continue;
+    const reason = getRejectionReason(cluster, now);
+    if (reason) {
+      console.log(`[intel] CLUSTER "${cluster.canonicalName}" (${cluster.phrases.length} phrases)`);
+      console.log(`[intel]   Mentions: ${cluster.totalMentions} | Authors: ${cluster.authors.size} | Platforms: ${[...cluster.sources].join(', ')}`);
+      console.log(`[intel]   Engagement: ${cluster.totalEngagement} | Trend: ${computeTrendScore(cluster, now)} | Confidence: ${computeConfidence(cluster, now)}`);
+      console.log(`[intel]   REJECTED: ${reason}`);
+      rejectCounts[reason] = (rejectCounts[reason] ?? 0) + 1;
+      continue;
+    }
 
     const existing = deduped.get(normKey);
     if (existing) {
+      duplicateCount++;
+      console.log(`[intel] CLUSTER "${cluster.canonicalName}" MERGED into "${existing.canonicalName}" (norm: ${normKey})`);
       existing.posts.push(...cluster.posts);
       for (const a of cluster.authors) existing.authors.add(a);
       for (const s of cluster.sources) existing.sources.add(s);
@@ -680,9 +814,25 @@ export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
         existing.canonicalName = cluster.canonicalName;
       }
     } else {
+      console.log(`[intel] CLUSTER "${cluster.canonicalName}" -> ACCEPTED`);
+      console.log(`[intel]   Mentions: ${cluster.totalMentions} | Authors: ${cluster.authors.size} | Platforms: ${[...cluster.sources].join(', ')}`);
+      console.log(`[intel]   Engagement: ${cluster.totalEngagement} | Trend: ${computeTrendScore(cluster, now)} | Confidence: ${computeConfidence(cluster, now)}`);
       deduped.set(normKey, cluster);
     }
   }
+
+  console.log(`[intel] === DIAGNOSTICS SUMMARY ===`);
+  console.log(`[intel] Posts collected: ${posts.length}`);
+  console.log(`[intel] Clusters created (phrase-based): ${clusters.length}`);
+  console.log(`[intel] Clusters after entity merge: ${entityMerged.length}`);
+  console.log(`[intel] Clusters after dedup: ${deduped.size}`);
+  console.log(`[intel] Duplicate merges: ${duplicateCount}`);
+  console.log(`[intel] Rejection breakdown:`);
+  const sortedRejects = Object.entries(rejectCounts).sort((a, b) => b[1] - a[1]);
+  for (const [reason, count] of sortedRejects) {
+    console.log(`[intel]   ${count} -> ${reason}`);
+  }
+  console.log(`[intel] Remaining: ${deduped.size}`);
 
   const narratives: MemeNarrative[] = [];
   for (const cluster of deduped.values()) {
@@ -718,5 +868,11 @@ export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
   }
 
   narratives.sort((a, b) => b.qualityScore - a.qualityScore);
-  return narratives.slice(0, MAX_NARRATIVES);
+  const final = narratives.slice(0, MAX_NARRATIVES);
+  console.log(`[intel] Final narratives returned: ${final.length}`);
+  for (const n of final) {
+    console.log(`[intel]   #${final.indexOf(n) + 1} ${n.narrative} | quality=${n.qualityScore} trend=${n.trendScore} conf=${n.confidencePct}% mentions=${n.mentionCount} authors=${n.uniqueAuthors} platforms=${n.sourceCount}`);
+  }
+  console.log(`[intel] === ANALYSIS END ===`);
+  return final;
 }
