@@ -3,6 +3,7 @@ import type { ITrendProvider, RawPost } from '../types.js';
 export class DexScreenerProvider implements ITrendProvider {
   readonly name = 'DexScreener';
   readonly sourceId = 'dexscreener';
+  readonly category = 'market' as const;
 
   async fetch(): Promise<RawPost[]> {
     const posts: RawPost[] = [];
@@ -31,6 +32,7 @@ export class DexScreenerProvider implements ITrendProvider {
           likes: 10,
           shares: 0,
           comments: 0,
+          providerCategory: 'market',
         });
       }
     } catch { /* return empty */ }

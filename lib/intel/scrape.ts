@@ -45,17 +45,18 @@ async function fetchProvider(provider: ITrendProvider): Promise<{ posts: RawPost
   };
 
   const start = Date.now();
+  const timeoutMs = provider.timeoutMs ?? FETCH_TIMEOUT_MS;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     status.requests++;
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       const posts = await Promise.race([
         provider.fetch(),
         new Promise<never>((_, reject) => {
-          controller.signal.addEventListener('abort', () => reject(new Error(`Timeout after ${FETCH_TIMEOUT_MS}ms`)));
+          controller.signal.addEventListener('abort', () => reject(new Error(`Timeout after ${timeoutMs}ms`)));
         }),
       ]);
 

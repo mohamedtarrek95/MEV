@@ -3,6 +3,7 @@ import type { ITrendProvider, RawPost } from '../types.js';
 export class GitHubProvider implements ITrendProvider {
   readonly name = 'GitHub Trending';
   readonly sourceId = 'github';
+  readonly category = 'social' as const;
 
   async fetch(): Promise<RawPost[]> {
     const posts: RawPost[] = [];
@@ -36,6 +37,7 @@ export class GitHubProvider implements ITrendProvider {
           likes: repo.stargazers_count,
           shares: 0,
           comments: 0,
+          providerCategory: 'social',
         });
       }
     } catch { /* return empty */ }

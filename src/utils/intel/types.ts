@@ -20,6 +20,9 @@ export interface MemeNarrative {
   topContributingPosts: string[];
   topPlatforms: string[];
   trendCause: string;
+  humanAuthors: string[];
+  marketSignals: string[];
+  socialPlatforms: string[];
 }
 
 export interface IntelReport {

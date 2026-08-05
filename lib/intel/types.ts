@@ -1,3 +1,5 @@
+export type ProviderCategory = 'social' | 'market';
+
 export interface RawPost {
   id: string;
   source: string;
@@ -9,6 +11,7 @@ export interface RawPost {
   likes: number;
   shares: number;
   comments: number;
+  providerCategory: ProviderCategory;
 }
 
 export interface NarrativeCluster {
@@ -46,6 +49,9 @@ export interface MemeNarrative {
   topContributingPosts: string[];
   topPlatforms: string[];
   trendCause: string;
+  humanAuthors: string[];
+  marketSignals: string[];
+  socialPlatforms: string[];
 }
 
 export interface IntelReport {
@@ -59,5 +65,7 @@ export interface IntelReport {
 export interface ITrendProvider {
   readonly name: string;
   readonly sourceId: string;
+  readonly category: ProviderCategory;
+  readonly timeoutMs?: number;
   fetch(): Promise<RawPost[]>;
 }

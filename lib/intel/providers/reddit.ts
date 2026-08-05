@@ -30,6 +30,7 @@ async function fetchSubreddit(sub: string, after?: string): Promise<{ posts: Raw
         likes: d.score,
         shares: 0,
         comments: d.num_comments,
+        providerCategory: 'social',
       };
     });
   return { posts, after: data.data?.after ?? null };
@@ -38,6 +39,7 @@ async function fetchSubreddit(sub: string, after?: string): Promise<{ posts: Raw
 export class RedditProvider implements ITrendProvider {
   readonly name = 'Reddit';
   readonly sourceId = 'reddit';
+  readonly category = 'social' as const;
 
   async fetch(): Promise<RawPost[]> {
     const all: RawPost[] = [];

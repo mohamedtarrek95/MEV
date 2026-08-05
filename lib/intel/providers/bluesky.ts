@@ -5,6 +5,7 @@ const QUERIES = ['meme', 'crypto', 'solana', 'viral', 'trending', 'nft', 'defi']
 export class BlueskyProvider implements ITrendProvider {
   readonly name = 'Bluesky';
   readonly sourceId = 'bluesky';
+  readonly category = 'social' as const;
 
   async fetch(): Promise<RawPost[]> {
     const all: RawPost[] = [];
@@ -36,6 +37,7 @@ export class BlueskyProvider implements ITrendProvider {
             likes: p.likeCount ?? 0,
             shares: p.repostCount ?? 0,
             comments: p.replyCount ?? 0,
+            providerCategory: 'social',
           });
         }
       } catch { /* skip failed query */ }

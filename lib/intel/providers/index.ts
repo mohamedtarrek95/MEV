@@ -5,6 +5,8 @@ import { HackerNewsProvider } from './hackernews.js';
 import { DexScreenerProvider } from './dexscreener.js';
 import { CoinGeckoProvider } from './coingecko.js';
 import { GitHubProvider } from './github.js';
+import { MastodonProvider } from './mastodon.js';
+import { LemmyProvider } from './lemmy.js';
 
 export function createAllProviders(): ITrendProvider[] {
   return [
@@ -14,5 +16,7 @@ export function createAllProviders(): ITrendProvider[] {
     new DexScreenerProvider(),
     new CoinGeckoProvider(),
     new GitHubProvider(),
+    new MastodonProvider(),
+    new LemmyProvider(),
   ];
 }

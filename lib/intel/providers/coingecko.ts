@@ -3,6 +3,7 @@ import type { ITrendProvider, RawPost } from '../types.js';
 export class CoinGeckoProvider implements ITrendProvider {
   readonly name = 'CoinGecko';
   readonly sourceId = 'coingecko';
+  readonly category = 'market' as const;
 
   async fetch(): Promise<RawPost[]> {
     const posts: RawPost[] = [];
@@ -34,6 +35,7 @@ export class CoinGeckoProvider implements ITrendProvider {
           likes: item.score ?? 0,
           shares: 0,
           comments: 0,
+          providerCategory: 'market',
         });
       }
     } catch { /* return empty */ }

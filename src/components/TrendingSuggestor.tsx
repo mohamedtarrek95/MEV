@@ -118,14 +118,48 @@ function NarrativeCard({ narrative, index, onCreateToken }: { narrative: MemeNar
       <div className="mt-3">
         <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Detected On</div>
         <div className="flex flex-wrap gap-1.5">
-          {narrative.sourcesFound.map((src) => (
-            <span key={src} className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-950/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {sourceLabel(src)}
-            </span>
-          ))}
+          {narrative.sourcesFound.map((src) => {
+            const isSocial = narrative.socialPlatforms?.includes(src);
+            return (
+              <span key={src} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                isSocial
+                  ? 'border-emerald-500/30 bg-emerald-950/30 text-emerald-300'
+                  : 'border-amber-500/30 bg-amber-950/30 text-amber-300'
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isSocial ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                {sourceLabel(src)}{isSocial ? '' : ' (market)'}
+              </span>
+            );
+          })}
         </div>
       </div>
+
+      {narrative.humanAuthors && narrative.humanAuthors.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Human Authors ({narrative.humanAuthors.length})</div>
+          <div className="flex flex-wrap gap-1.5">
+            {narrative.humanAuthors.map((author) => (
+              <span key={author} className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-950/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                {author}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {narrative.marketSignals && narrative.marketSignals.length > 0 && (
+        <div className="mt-2">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Market Confirmation</div>
+          <div className="flex flex-wrap gap-1.5">
+            {narrative.marketSignals.map((src) => (
+              <span key={src} className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-950/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                {sourceLabel(src)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {narrative.topPostTitles.length > 0 && (
         <div className="mt-3">
@@ -234,7 +268,7 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
     if (narratives.length === 0) return;
     const text = narratives.map((n, i) => {
       const t = generateToken(n);
-      return `#${i + 1} ${n.narrative} ($${t.symbol})\nQuality: ${n.qualityScore} | Trend Score: ${n.trendScore}\nConfidence: ${n.confidencePct}%\nMentions: ${n.mentionCount} | Growth: +${n.growthPct}% | Authors: ${n.uniqueAuthors}\nSources: ${n.sourcesFound.map(sourceLabel).join(', ')}\nWhy: ${n.narrativeWhy}\nTrend Cause: ${n.trendCause}\nReason: ${n.reason}`;
+      return `#${i + 1} ${n.narrative} ($${t.symbol})\nQuality: ${n.qualityScore} | Trend Score: ${n.trendScore}\nConfidence: ${n.confidencePct}%\nHuman Authors: ${n.humanAuthors?.join(', ') || 'none'}\nSocial Platforms: ${n.socialPlatforms?.join(', ') || 'none'}\nMarket Signals: ${n.marketSignals?.join(', ') || 'none'}\nMentions: ${n.mentionCount} | Growth: +${n.growthPct}%\nWhy: ${n.narrativeWhy}\nTrend Cause: ${n.trendCause}\nReason: ${n.reason}`;
     }).join('\n\n---\n\n');
     navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }, [narratives]);
@@ -312,11 +346,11 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
       <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/30 p-5">
         <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-3">How It Works</div>
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-xs text-zinc-500">
-          <div><span className="font-semibold text-zinc-400">1. Auto-Collect</span> — Scrapes Reddit, Bluesky, Hacker News, DexScreener, CoinGecko, GitHub on every request</div>
-          <div><span className="font-semibold text-zinc-400">2. Filter &amp; Cluster</span> — Classifies content, clusters by bigram phrases, merges duplicates, removes generic/metadata terms</div>
+          <div><span className="font-semibold text-zinc-400">1. Auto-Collect</span> — Scrapes Reddit, Bluesky, Hacker News (social) + DexScreener, CoinGecko (market)</div>
+          <div><span className="font-semibold text-zinc-400">2. Human Verification</span> — Only human authors from social platforms count. API identities from market data never create narratives.</div>
           <div><span className="font-semibold text-zinc-400">3. Narrative Intelligence</span> — Evaluates 8 dimensions: cultural recognition, metadata detection, financial metrics, platform UI, human discussion, emotional language, cross-post presence, subject usage</div>
-          <div><span className="font-semibold text-zinc-400">4. Quality Score</span> — Weighted ranking: semantic quality (35%), platform diversity (25%), authors (15%), engagement (10%), growth (10%), freshness (5%). Only 70+ pass</div>
-          <div><span className="font-semibold text-zinc-400">5. Create</span> — Top 15 verified opportunities shown with detailed intelligence. Click "Create Token" to auto-generate name, ticker, description, mascot, and prompts</div>
+          <div><span className="font-semibold text-zinc-400">4. Quality Score</span> — Requires 2+ human authors AND 2+ social platforms. Market sources only increase confidence. Score 70+ to pass.</div>
+          <div><span className="font-semibold text-zinc-400">5. Create</span> — Top 15 verified opportunities shown with human/social/market breakdown. Click "Create Token" to auto-generate.</div>
         </div>
       </div>
 

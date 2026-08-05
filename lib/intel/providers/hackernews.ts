@@ -24,6 +24,7 @@ async function fetchItem(id: number): Promise<HNItem | null> {
 export class HackerNewsProvider implements ITrendProvider {
   readonly name = 'Hacker News';
   readonly sourceId = 'hackerNews';
+  readonly category = 'social' as const;
 
   async fetch(): Promise<RawPost[]> {
     const posts: RawPost[] = [];
@@ -48,6 +49,7 @@ export class HackerNewsProvider implements ITrendProvider {
           likes: i.score ?? 0,
           shares: 0,
           comments: i.descendants ?? 0,
+          providerCategory: 'social',
         });
       }
     } catch { /* return empty */ }
