@@ -1,6 +1,6 @@
 import { createAllProviders } from './providers/index.js';
 import { analyzeNarratives } from './engine.js';
-import type { IntelReport, RawPost, ITrendProvider } from './types.js';
+import type { LaunchOpportunity, NarrativeReport, RawPost, ITrendProvider } from './types.js';
 
 export interface ProviderStatus {
   name: string;
@@ -17,7 +17,7 @@ export interface ProviderStatus {
 
 export interface ScrapeResult {
   posts: RawPost[];
-  report: IntelReport | null;
+  report: NarrativeReport | null;
   providers: ProviderStatus[];
   totalPosts: number;
   totalAccepted: number;
@@ -121,20 +121,29 @@ export async function scrapeAll(): Promise<ScrapeResult> {
     }
   }
 
-  const narratives = analyzeNarratives(allPosts);
+  const opportunities = analyzeNarratives(allPosts);
   const now = Date.now();
 
-  const report: IntelReport = {
+  const report: NarrativeReport = {
     generatedAt: now,
-    narratives,
+    opportunities,
     postsProcessed: allPosts.length,
     sourcesScanned: providerStatuses.filter((s) => s.acceptedPosts > 0).map((s) => s.sourceId),
     windowHours: 24,
+    diagnostics: {
+      collectedPosts: allPosts.length,
+      extractedEntities: 0,
+      mergedEntities: 0,
+      rejectedEntities: [],
+      acceptedEntities: opportunities.length,
+      top15Entities: opportunities.slice(0, 15).map((o) => o.canonicalEntity),
+      pipelineFlow: [],
+    },
   };
 
   const durationMs = now - overallStart;
   console.log(
-    `[scrape] complete: ${allPosts.length} posts, ${narratives.length} narratives, ${durationMs}ms total`,
+    `[scrape] complete: ${allPosts.length} posts, ${opportunities.length} opportunities, ${durationMs}ms total`,
   );
   for (const s of providerStatuses) {
     console.log(

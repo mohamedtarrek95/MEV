@@ -6,7 +6,7 @@ const LEMMY_INSTANCES = [
   'lemm.ee',
 ];
 
-const QUERIES = ['crypto', 'meme', 'solana', 'defi', 'nft', 'web3'];
+const QUERIES = ['meme', 'brainrot', 'shitpost', 'viral', 'pepe', 'crypto meme', 'solana', 'italian brainrot'];
 
 export class LemmyProvider implements ITrendProvider {
   readonly name = 'Lemmy';
@@ -21,7 +21,7 @@ export class LemmyProvider implements ITrendProvider {
         try {
           const url = `https://${instance}/api/v3/search?q=${encodeURIComponent(q)}&type_=Posts&sort=New&limit=10`;
           const res = await fetch(url, {
-            headers: { 'User-Agent': 'MemeIntel/1.0' },
+            headers: { 'User-Agent': 'MemeLaunchEngine/1.0' },
           });
           if (!res.ok) continue;
           const data = await res.json() as {

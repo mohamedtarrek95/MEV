@@ -1,7 +1,7 @@
 import { createAllProviders } from './providers/index.js';
 import { analyzeNarratives } from './engine.js';
 import { saveReport, disconnect, hasRedis } from './db.js';
-import type { IntelReport, RawPost } from './types.js';
+import type { NarrativeReport, RawPost } from './types.js';
 
 const REFRESH_MS = Number(process.env.INTEL_REFRESH_MS || 5 * 60 * 1000);
 const MAX_RETRIES = 2;
@@ -22,7 +22,7 @@ async function fetchWithRetry(provider: { name: string; sourceId: string; fetch(
   }
 }
 
-export async function runScan(): Promise<IntelReport> {
+export async function runScan(): Promise<NarrativeReport> {
   const providers = createAllProviders();
   console.log(`[intel] scanning ${providers.length} providers...`);
 
@@ -45,15 +45,24 @@ export async function runScan(): Promise<IntelReport> {
 
   console.log(`[intel] total posts collected: ${allPosts.length} from ${sourcesScanned.length} sources`);
 
-  const narratives = analyzeNarratives(allPosts);
-  console.log(`[intel] analysis complete: ${narratives.length} narratives`);
+  const opportunities = analyzeNarratives(allPosts);
+  console.log(`[intel] analysis complete: ${opportunities.length} launch opportunities`);
 
-  const report: IntelReport = {
+  const report: NarrativeReport = {
     generatedAt: Date.now(),
-    narratives,
+    opportunities,
     postsProcessed: allPosts.length,
     sourcesScanned,
     windowHours: 24,
+    diagnostics: {
+      collectedPosts: allPosts.length,
+      extractedEntities: 0,
+      mergedEntities: 0,
+      rejectedEntities: [],
+      acceptedEntities: opportunities.length,
+      top15Entities: opportunities.slice(0, 15).map((o) => o.canonicalEntity),
+      pipelineFlow: [],
+    },
   };
 
   if (hasRedis()) {

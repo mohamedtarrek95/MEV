@@ -1,14 +1,24 @@
 import type { ITrendProvider, RawPost } from '../types.js';
 
 const SUBREDDITS = [
-  'wallstreetbets', 'cryptocurrency', 'solana', 'memes', 'defi',
-  'CryptoMoonShots', 'SatoshiStreetBets', 'meme', 'CryptoMemes',
+  // Crypto/meme discussion
+  'CryptoMoonShots', 'SatoshiStreetBets', 'memecoin', 'solana',
+  // General meme culture
+  'memes', 'dankmemes', 'MemeEconomy', 'ComedyNecrophilia',
+  'shitposting', '196', 'okbuddyretard',
+  // Internet culture
+  'AnimalsBeingDerps', 'AnimalsBeingFunny', 'cats', 'dogs',
+  'AnimalMemes', 'CatMemes', 'dogelon',
+  // AI/tech memes
+  'LocalLLaMA', 'artificial', 'singularity',
+  // Trending cultural discussions
+  'outoftheloop', 'NoStupidQuestions', 'tifu',
 ];
 
 async function fetchSubreddit(sub: string, after?: string): Promise<{ posts: RawPost[]; after: string | null }> {
   const url = `https://www.reddit.com/r/${sub}/hot.json?limit=25${after ? `&after=${after}` : ''}`;
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'MemeIntel/1.0 (meme-narrative-discovery)' },
+    headers: { 'User-Agent': 'MemeLaunchEngine/1.0 (pre-token-narrative-discovery)' },
   });
   if (!res.ok) throw new Error(`Reddit ${sub}: ${res.status}`);
   const data = await res.json() as {
@@ -16,7 +26,7 @@ async function fetchSubreddit(sub: string, after?: string): Promise<{ posts: Raw
   };
   const children = data.data?.children ?? [];
   const posts: RawPost[] = children
-    .filter((c) => c.data.score > 5)
+    .filter((c) => c.data.score > 3)
     .map((c) => {
       const d = c.data;
       return {
@@ -30,7 +40,7 @@ async function fetchSubreddit(sub: string, after?: string): Promise<{ posts: Raw
         likes: d.score,
         shares: 0,
         comments: d.num_comments,
-        providerCategory: 'social',
+        providerCategory: 'social' as const,
       };
     });
   return { posts, after: data.data?.after ?? null };

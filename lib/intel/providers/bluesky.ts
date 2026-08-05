@@ -1,6 +1,12 @@
 import type { ITrendProvider, RawPost } from '../types.js';
 
-const QUERIES = ['meme', 'crypto', 'solana', 'viral', 'trending', 'nft', 'defi'];
+const QUERIES = [
+  'meme', 'brainrot', 'viral', 'shitpost',
+  'pepe', 'doge', 'bonk', 'wojak', 'sigma',
+  'crypto meme', 'solana meme', 'pump.fun',
+  'italian brainrot', 'skibidi', 'rizz',
+  'ai meme', 'cat meme', 'dog meme',
+];
 
 export class BlueskyProvider implements ITrendProvider {
   readonly name = 'Bluesky';

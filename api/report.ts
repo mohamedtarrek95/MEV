@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { loadReport, saveReport, hasRedis, healthCheck, disconnect } from '../lib/intel/db.js';
+import { loadReport, saveReport, hasRedis, healthCheck } from '../lib/intel/db.js';
 import { scrapeAll, type ScrapeResult } from '../lib/intel/scrape.js';
 
 const STALE_MS = 5 * 60 * 1000;
@@ -61,11 +61,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   if (action === 'status') {
     const dbOk = hasRedis() ? await healthCheck() : false;
-    let reportCount = 0;
+    let opportunityCount = 0;
     if (hasRedis()) {
       try {
         const r = await loadReport();
-        if (r) reportCount = r.narratives.length;
+        if (r) opportunityCount = r.opportunities.length;
       } catch { /* ignore */ }
     }
     sendJson(res, 200, {
@@ -81,11 +81,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             totalPosts: lastScrape.totalPosts,
             totalAccepted: lastScrape.totalAccepted,
             totalRejected: lastScrape.totalRejected,
-            narratives: lastScrape.report?.narratives.length ?? 0,
+            opportunities: lastScrape.report?.opportunities.length ?? 0,
             providers: lastScrape.providers,
           }
         : null,
-      reportNarratives: reportCount,
+      reportOpportunities: opportunityCount,
     });
     return;
   }
@@ -124,7 +124,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           ok: true,
           report: null,
           source: 'intel',
-          message: 'No verified narratives found during the last 24 hours.',
+          message: 'No launch opportunities found. The engine is scanning the internet for viral narratives.',
         });
         return;
       }

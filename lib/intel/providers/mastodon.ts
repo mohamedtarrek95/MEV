@@ -7,7 +7,7 @@ const INSTANCES = [
   'techhub.social',
 ];
 
-const QUERIES = ['crypto', 'meme', 'solana', 'defi', 'nft', 'web3'];
+const QUERIES = ['meme', 'brainrot', 'shitpost', 'viral', 'pepe', 'crypto meme', 'solana', 'pump.fun', 'italian brainrot'];
 
 export class MastodonProvider implements ITrendProvider {
   readonly name = 'Mastodon';
@@ -21,7 +21,7 @@ export class MastodonProvider implements ITrendProvider {
         try {
           const url = `https://${instance}/api/v2/search?q=${encodeURIComponent(q)}&type=statuses&limit=10`;
           const res = await fetch(url, {
-            headers: { 'User-Agent': 'MemeIntel/1.0' },
+            headers: { 'User-Agent': 'MemeLaunchEngine/1.0' },
           });
           if (!res.ok) continue;
           const data = await res.json() as {
