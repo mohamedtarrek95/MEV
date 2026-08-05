@@ -23,13 +23,12 @@ export class CoinGeckoProvider implements ITrendProvider {
       };
       for (const c of (data.coins ?? []).slice(0, 20)) {
         const item = c.item;
-        const change = item.data?.price_change_percentage_24h?.usd ?? 0;
         posts.push({
           id: `cg-${item.id}`,
           source: 'coingecko',
           author: 'coingecko',
-          title: `${item.name} (${item.symbol.toUpperCase()}) trending on CoinGecko`,
-          body: `${item.name} is trending. Rank #${item.market_cap_rank ?? '?'}. 24h change: ${change > 0 ? '+' : ''}${change.toFixed(1)}%`,
+          title: item.name,
+          body: item.name,
           url: `https://www.coingecko.com/en/coins/${item.id}`,
           timestamp: Date.now(),
           likes: item.score ?? 0,

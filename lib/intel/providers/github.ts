@@ -23,13 +23,14 @@ export class GitHubProvider implements ITrendProvider {
         }>;
       };
       for (const repo of (data.items ?? []).slice(0, 20)) {
-        const topics = (repo.topics ?? []).join(', ');
+        const desc = (repo.description ?? '').trim();
+        if (!desc) continue;
         posts.push({
           id: `gh-${repo.full_name}`,
           source: 'github',
           author: repo.full_name.split('/')[0],
-          title: repo.full_name,
-          body: `${repo.description ?? ''} Topics: ${topics} Language: ${repo.language ?? 'unknown'} Stars: ${repo.stargazers_count}`,
+          title: desc.slice(0, 100),
+          body: desc,
           url: repo.html_url,
           timestamp: new Date(repo.created_at).getTime(),
           likes: repo.stargazers_count,

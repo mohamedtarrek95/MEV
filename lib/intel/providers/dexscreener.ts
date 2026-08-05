@@ -18,12 +18,14 @@ export class DexScreenerProvider implements ITrendProvider {
       }>;
       for (const item of (data ?? []).slice(0, 30)) {
         if (!item.tokenAddress || !item.chainId) continue;
+        const desc = (item.description ?? '').trim();
+        if (!desc || desc === item.tokenAddress) continue;
         posts.push({
           id: `dex-${item.tokenAddress}`,
           source: 'dexscreener',
           author: 'dexscreener',
-          title: item.description?.slice(0, 100) ?? item.tokenAddress,
-          body: item.description ?? item.tokenAddress,
+          title: desc.slice(0, 100),
+          body: desc,
           url: item.url ?? `https://dexscreener.com/${item.chainId}/${item.tokenAddress}`,
           timestamp: Date.now(),
           likes: 10,
