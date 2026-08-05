@@ -70,6 +70,20 @@ function NarrativeCard({ narrative, index, onCreateToken }: { narrative: MemeNar
 
       <p className="mt-3 text-xs text-zinc-400 leading-relaxed">{narrative.reason}</p>
 
+      {narrative.narrativeWhy && (
+        <div className="mt-2 rounded-md border border-fuchsia-500/20 bg-fuchsia-950/20 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-fuchsia-500 mb-1">Why It Passed</div>
+          <p className="text-[11px] text-fuchsia-300/80 leading-relaxed">{narrative.narrativeWhy}</p>
+        </div>
+      )}
+
+      {narrative.trendCause && (
+        <div className="mt-2 rounded-md border border-cyan-500/20 bg-cyan-950/20 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wider text-cyan-500 mb-1">What Caused It to Rise</div>
+          <p className="text-[11px] text-cyan-300/80 leading-relaxed">{narrative.trendCause}</p>
+        </div>
+      )}
+
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-6 gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-zinc-600">Quality Score</div>
@@ -121,6 +135,31 @@ function NarrativeCard({ narrative, index, onCreateToken }: { narrative: MemeNar
               <li key={i} className="text-[11px] text-zinc-500 truncate">• {t}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {narrative.topContributingPosts && narrative.topContributingPosts.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Most Contributing Posts</div>
+          <ul className="space-y-0.5">
+            {narrative.topContributingPosts.map((t, i) => (
+              <li key={i} className="text-[11px] text-zinc-500 truncate">• {t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {narrative.topPlatforms && narrative.topPlatforms.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1">Platforms That Independently Discussed It</div>
+          <div className="flex flex-wrap gap-1.5">
+            {narrative.topPlatforms.map((src) => (
+              <span key={src} className="inline-flex items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-950/30 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                {sourceLabel(src)}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -195,7 +234,7 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
     if (narratives.length === 0) return;
     const text = narratives.map((n, i) => {
       const t = generateToken(n);
-      return `#${i + 1} ${n.narrative} ($${t.symbol})\nQuality: ${n.qualityScore} | Trend Score: ${n.trendScore}\nConfidence: ${n.confidencePct}%\nMentions: ${n.mentionCount} | Growth: +${n.growthPct}% | Authors: ${n.uniqueAuthors}\nSources: ${n.sourcesFound.map(sourceLabel).join(', ')}\nReason: ${n.reason}`;
+      return `#${i + 1} ${n.narrative} ($${t.symbol})\nQuality: ${n.qualityScore} | Trend Score: ${n.trendScore}\nConfidence: ${n.confidencePct}%\nMentions: ${n.mentionCount} | Growth: +${n.growthPct}% | Authors: ${n.uniqueAuthors}\nSources: ${n.sourcesFound.map(sourceLabel).join(', ')}\nWhy: ${n.narrativeWhy}\nTrend Cause: ${n.trendCause}\nReason: ${n.reason}`;
     }).join('\n\n---\n\n');
     navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }, [narratives]);
@@ -272,11 +311,12 @@ export function TrendingSuggestor({ api }: TrendingSuggestorProps) {
 
       <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/30 p-5">
         <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-3">How It Works</div>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs text-zinc-500">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 text-xs text-zinc-500">
           <div><span className="font-semibold text-zinc-400">1. Auto-Collect</span> — Scrapes Reddit, Bluesky, Hacker News, DexScreener, CoinGecko, GitHub on every request</div>
-          <div><span className="font-semibold text-zinc-400">2. Filter &amp; Dedupe</span> — Discards low-quality noise, merges duplicates (e.g. PEPE / $PEPE / Pepe Coin), removes generic phrases</div>
-          <div><span className="font-semibold text-zinc-400">3. Quality Score</span> — Weighted ranking: cross-platform diversity (35%), authors (20%), growth (15%), velocity (10%), engagement (10%), freshness (5%), confidence (5%)</div>
-          <div><span className="font-semibold text-zinc-400">4. Create</span> — Top 15 verified opportunities shown. Click "Create Token" to auto-generate name, ticker, description, mascot, and prompts</div>
+          <div><span className="font-semibold text-zinc-400">2. Filter &amp; Cluster</span> — Classifies content, clusters by bigram phrases, merges duplicates, removes generic/metadata terms</div>
+          <div><span className="font-semibold text-zinc-400">3. Narrative Intelligence</span> — Evaluates 8 dimensions: cultural recognition, metadata detection, financial metrics, platform UI, human discussion, emotional language, cross-post presence, subject usage</div>
+          <div><span className="font-semibold text-zinc-400">4. Quality Score</span> — Weighted ranking: semantic quality (35%), platform diversity (25%), authors (15%), engagement (10%), growth (10%), freshness (5%). Only 70+ pass</div>
+          <div><span className="font-semibold text-zinc-400">5. Create</span> — Top 15 verified opportunities shown with detailed intelligence. Click "Create Token" to auto-generate name, ticker, description, mascot, and prompts</div>
         </div>
       </div>
 

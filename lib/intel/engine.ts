@@ -467,8 +467,380 @@ function mergeByEntities(clusters: Cluster[]): Cluster[] {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 6: SCORING
+// SECTION 6: NARRATIVE INTELLIGENCE LAYER
+//
+// This layer determines whether a cluster represents an actual meme
+// narrative rather than simply a repeated phrase or metadata.
+//
+// It evaluates 8 dimensions and assigns a Narrative Quality Score (0-100)
+// using weighted components:
+//   35% semantic quality (is this a real cultural idea?)
+//   25% cross-platform diversity
+//   15% independent authors
+//   10% engagement
+//   10% growth
+//   5%  freshness
+//
+// Only clusters scoring >= 70 become Meme Narratives.
 // ══════════════════════════════════════════════════════════════════════
+
+// Known meme narrative patterns — these are recognized cultural ideas
+const MEME_NARRATIVE_PATTERNS: RegExp[] = [
+  /\b(brainrot|italian brainrot|sigma|aura|npc|skibidi|gigachad|pepe|frog)\b/i,
+  /\b(goblin mode|ai girlfriend|anime waifu|capybara|banana guy)\b/i,
+  /\b(doge|shiba|bonk|wojak|chad|doomer|boomer|zoomer|coomer)\b/i,
+  /\b(rizz|simp|stan|copypasta|yeet|slay|periodt|bet|no cap)\b/i,
+  /\b(caught in 4k|red flag|green flag|ick|delulu|main character)\b/i,
+  /\b(viral|meme|trend|fyp|for you|foryoupage|greenscreen|duet|stitch)\b/i,
+  /\b(fortnite|minecraft|roblox|valorant|among us|sus)\b/i,
+  /\b(pokemon|mario|zelda|kirby|spongebob|patrick|tom|jerry)\b/i,
+  /\b(uno reverse|this is fine|distracted boyfriend|woman yelling cat)\b/i,
+  /\b(doomer|poozer|tradwife|pickme|soy boy|fedora|neckbeard)\b/i,
+  /\b(crypto|nft|defi|web3|blockchain)\b.*\b(meme|coin|token|project|launch)\b/i,
+  /\b(solana|ethereum|base|bnb)\b.*\b(meme|coin|token|cat|dog|frog|pepe)\b/i,
+];
+
+// Metadata/UI labels that should NOT be narratives
+const METADATA_LABELS: RegExp[] = [
+  /\b(trending|trend)\s*(rank|on|in|now|today|coins?|tokens?|repos?|topics?)\b/i,
+  /\brank\s*#?\d+\b/i,
+  /\b(top|bottom)\s+(gainers?|losers?|traded|volume|coins?|tokens?|pairs?|boosted)\b/i,
+  /\b24\s*h\s*(change|gain|loss|volume|move|price)\b/i,
+  /\b(7d|1h|30m)\s*(change|gain|loss|volume)\b/i,
+  /\b(volume|liquidity|fdv|tvl|apy|apr|market cap|price)\b/i,
+  /\b(holders?|swaps?|transactions?|pairs?|listings?)\b/i,
+  /\bnew\s+(pairs?|listings?|coins?|tokens?)\b/i,
+  /\b(boosted|boosting|top boosted)\b/i,
+  /\b(show hn|ask hn|hacker news|lobsters)\b/i,
+  /\b(trending coins|trending tokens|trending today|trending this week)\b/i,
+  /\b(most traded|highest volume|most popular)\b/i,
+  /\b(created|launched|deployed|verified|unverified)\b/i,
+  /\b(view|explore)\s+(more|all|details?)\b/i,
+  /\b(sign|log\s*in|log\s*out|connect|disconnect)\b/i,
+  /\b(buy|sell|swap|bridge)\s+(now|token|coin)\b/i,
+  /\b(chain|network)\s*(mainnet|testnet|devnet)\b/i,
+];
+
+// Financial metrics that are NOT narratives
+const FINANCIAL_METRICS: RegExp[] = [
+  /\b(price|market cap|mc|fdv|tvl|volume|24h|7d|1h|30m)\b/i,
+  /\b(change|gain|loss|pump|dump|ath|atl|dip|rally|moon)\b/i,
+  /\b(\d+\.?\d*)\s*(%|percent|usd|usdc|usdt|sol|eth|btc)\b/i,
+  /\b(bullish|bearish|long|short|leverage|margin)\b/i,
+  /\b(liquidity|swap|pool|apy|apr|yield|stake)\b/i,
+];
+
+// Platform UI labels
+const PLATFORM_UI_LABELS: RegExp[] = [
+  /\b(coingecko|dexscreener|github|gitlab|bitbucket|npm|pypi)\b/i,
+  /\b(stars?|forks?|watchers?|contributors?|commits?)\b/i,
+  /\b(reddit|bluesky|twitter|telegram|discord|youtube|tiktok)\b.*\b(trending|popular|hot|top)\b/i,
+  /\b(views?|likes?|shares?|comments?|upvotes?|downvotes?)\b/i,
+];
+
+const EMOTIONAL_WORDS = new Set([
+  'love','hate','crazy','insane','wild','epic','best','worst','amazing',
+  'terrible','beautiful','ugly','fire','trash','goat','mid','middest',
+  'incredible','unbelievable','shocking','hilarious','funny','sad','happy',
+  'angry','obsessed','addicted','based','cringe','ngl','fr','istg',
+  'unreal','dream','nightmare','sheesh','ayo','bruh','lowkey','highkey',
+]);
+
+const CONVERSATIONAL_WORDS = new Set([
+  'think','feel','believe','opinion','hot','take','controversial','unpopular',
+  'just','actually','literally','honestly','seriously','imagine','what','why',
+  'how','anyone','someone','everyone','nobody','we','us','them','those',
+  'this','that','here','there','now','today','yesterday','tomorrow',
+]);
+
+const INDEPENDENT_SOURCES = new Set([
+  'reddit','bluesky','dexscreener','pump.fun','hackernews','lobsters',
+  'twitter','telegram','discord','youtube','tiktok','instagram','4chan',
+]);
+
+interface NarrativeIntelligence {
+  isNarrative: boolean;
+  score: number;
+  reasons: string[];
+  breakdown: Record<string, number>;
+  narrativeWhy: string;
+  topContributingPosts: string[];
+  topPlatforms: string[];
+  trendCause: string;
+}
+
+function computeNarrativeIntelligence(cluster: Cluster, now: number): NarrativeIntelligence {
+  const reasons: string[] = [];
+  const breakdown: Record<string, number> = {};
+  const name = cluster.canonicalName.toLowerCase();
+  const nameNorm = normalizeNarrativeName(name);
+
+  // ── CHECK 1: Does the cluster describe a meme, joke, character,
+  //    movement, personality, slang, event, or viral concept? (0-30) ──
+  let culturalIdeaScore = 0;
+
+  // Direct match to known meme narrative patterns
+  for (const p of MEME_NARRATIVE_PATTERNS) {
+    if (p.test(name)) { culturalIdeaScore += 15; break; }
+  }
+
+  // Check for recognized cultural entities
+  const entities = [...cluster.entities.entries()];
+  const culturalEntities = entities.filter(([, cat]) =>
+    cat === 'meme' || cat === 'character' || cat === 'person' || cat === 'token'
+  );
+  culturalIdeaScore += Math.min(culturalEntities.length * 5, 15);
+  breakdown.culturalIdea = Math.min(culturalIdeaScore, 30);
+
+  if (culturalIdeaScore >= 20) {
+    reasons.push(`Recognized cultural idea (${culturalEntities.map(([e]) => e).join(', ')})`);
+  } else if (culturalIdeaScore >= 10) {
+    reasons.push('Partial cultural recognition');
+  }
+
+  // ── CHECK 2: Is the cluster composed mostly of metadata? (0-20) ──
+  let metadataPenalty = 0;
+  for (const p of METADATA_LABELS) {
+    if (p.test(name)) { metadataPenalty += 20; break; }
+  }
+  // Also check if the cluster name is a common metadata phrase
+  const metadataWords = ['trending', 'rank', 'top', 'gainers', 'losers', 'volume', 'liquidity',
+    'market', 'cap', 'fdv', 'tvl', 'holders', 'swaps', 'transactions', 'price', 'change',
+    '24h', '7d', '1h', '30m', 'boosted', 'new', 'pairs', 'coins', 'tokens', 'topics',
+    'language', 'stars', 'forks', 'github', 'coingecko', 'dexscreener', 'created', 'show hn',
+    'ask hn', 'hacker news', 'lobsters', 'trending coins', 'trending tokens', 'trending today',
+    'most traded', 'highest volume', 'trending repos', 'new pairs', 'new listings'];
+  const nameWords = name.split(/\s+/);
+  let metadataWordCount = 0;
+  for (const w of nameWords) {
+    if (metadataWords.includes(w)) metadataWordCount++;
+  }
+  if (nameWords.length > 0 && metadataWordCount / nameWords.length > 0.5) {
+    metadataPenalty = Math.max(metadataPenalty, 15);
+  }
+  const metadataScore = 20 - Math.min(metadataPenalty, 20);
+  breakdown.metadata = metadataScore;
+  if (metadataPenalty >= 15) {
+    reasons.push('Cluster is metadata/UI label — not a narrative');
+  } else if (metadataPenalty >= 8) {
+    reasons.push('Contains metadata elements');
+  }
+
+  // ── CHECK 3: Does the cluster contain only financial metrics? (0-15) ──
+  let financialPenalty = 0;
+  for (const p of FINANCIAL_METRICS) {
+    if (p.test(name)) { financialPenalty += 15; break; }
+  }
+  const financialScore = 15 - Math.min(financialPenalty, 15);
+  breakdown.financial = financialScore;
+  if (financialPenalty >= 10) {
+    reasons.push('Cluster is primarily financial metrics — not a narrative');
+  }
+
+  // ── CHECK 4: Is it merely a platform UI label? (0-10) ──
+  let uiPenalty = 0;
+  for (const p of PLATFORM_UI_LABELS) {
+    if (p.test(name)) { uiPenalty += 10; break; }
+  }
+  const uiScore = 10 - Math.min(uiPenalty, 10);
+  breakdown.platformUi = uiScore;
+  if (uiPenalty >= 8) {
+    reasons.push('Cluster is a platform UI label — not a narrative');
+  }
+
+  // ── CHECK 5: Does it represent human discussion? (0-10) ──
+  const samplePosts = cluster.posts.slice(0, 30);
+  let humanDiscussionScore = 0;
+
+  // Check for real discussion signals in posts
+  let discussionHits = 0;
+  for (const post of samplePosts) {
+    const text = `${post.title} ${post.body}`.toLowerCase();
+    // Look for opinion-sharing, questions, reactions
+    if (text.includes('?') || text.includes('!')) discussionHits++;
+    if (/\b(think|feel|believe|opinion|hot take|controversial)\b/i.test(text)) discussionHits++;
+    if (/\b(love|hate|crazy|insane|wild|epic|best|worst|amazing)\b/i.test(text)) discussionHits++;
+  }
+  humanDiscussionScore = Math.min(Math.round((discussionHits / Math.max(samplePosts.length, 1)) * 15), 10);
+  breakdown.humanDiscussion = humanDiscussionScore;
+  if (humanDiscussionScore >= 7) {
+    reasons.push('Strong human discussion signal');
+  } else if (humanDiscussionScore >= 3) {
+    reasons.push('Moderate discussion activity');
+  } else {
+    reasons.push('Weak human discussion — may be automated/metadata');
+  }
+
+  // ── CHECK 6: Is there emotional or conversational language? (0-10) ──
+  let emotionalHits = 0;
+  let conversationalHits = 0;
+  for (const post of samplePosts) {
+    const text = `${post.title} ${post.body}`.toLowerCase();
+    const words = text.split(/\s+/);
+    for (const w of words) {
+      const clean = w.replace(/[^a-z]/g, '');
+      if (EMOTIONAL_WORDS.has(clean)) emotionalHits++;
+      if (CONVERSATIONAL_WORDS.has(clean)) conversationalHits++;
+    }
+  }
+  const emotionalScore = Math.min(Math.round((emotionalHits / Math.max(samplePosts.length, 1)) * 8), 5);
+  const conversationalScore = Math.min(Math.round((conversationalHits / Math.max(samplePosts.length, 1)) * 8), 5);
+  breakdown.emotional = emotionalScore;
+  breakdown.conversational = conversationalScore;
+  if (emotionalScore >= 3) reasons.push('Emotional engagement detected');
+  if (conversationalScore >= 3) reasons.push('Conversational/opinion language present');
+
+  // ── CHECK 7: Does it appear naturally across multiple independent posts? (0-5) ──
+  let naturalMentionCount = 0;
+  for (const post of samplePosts) {
+    const text = `${post.title} ${post.body}`.toLowerCase();
+    if (text.includes(name) || text.includes(nameNorm)) naturalMentionCount++;
+  }
+  const mentionRatio = samplePosts.length > 0 ? naturalMentionCount / samplePosts.length : 0;
+  const crossPostScore = Math.min(Math.round(mentionRatio * 7), 5);
+  breakdown.crossPost = crossPostScore;
+  if (crossPostScore >= 4) {
+    reasons.push(`Appears naturally in ${Math.round(mentionRatio * 100)}% of posts`);
+  } else if (crossPostScore >= 2) {
+    reasons.push(`Found in ${Math.round(mentionRatio * 100)}% of posts`);
+  }
+
+  // ── CHECK 8: Is it used as a subject rather than as metadata? (0-5) ──
+  let subjectScore = 0;
+  // A real narrative is typically the subject of discussion, not just a label
+  // Check if posts discuss the concept, not just mention it as a tag
+  let discussionPosts = 0;
+  for (const post of samplePosts) {
+    const text = `${post.title} ${post.body}`.toLowerCase();
+    const hasNarrative = text.includes(name) || text.includes(nameNorm);
+    const isDiscussion = text.length > 50 && (text.includes(' ') && !/^\d/.test(text));
+    if (hasNarrative && isDiscussion) discussionPosts++;
+  }
+  const discussionRatio = samplePosts.length > 0 ? discussionPosts / samplePosts.length : 0;
+  subjectScore = Math.min(Math.round(discussionRatio * 7), 5);
+  breakdown.subjectUsage = subjectScore;
+  if (subjectScore >= 4) {
+    reasons.push('Used as subject of discussion — not just a label');
+  }
+
+  // ── SEMANTIC TOTAL (0-100) ──
+  const semanticTotal = Math.min(
+    breakdown.culturalIdea + metadataScore + financialScore + uiScore +
+    breakdown.humanDiscussion + breakdown.emotional + breakdown.conversational +
+    crossPostScore + subjectScore, 100
+  );
+  breakdown.semanticTotal = semanticTotal;
+
+  // ── DETERMINE IF THIS IS A REAL NARRATIVE ──
+  // Hard reject: metadata-only, financial-only, or platform UI
+  const isMetadata = metadataPenalty >= 15;
+  const isFinancial = financialPenalty >= 10;
+  const isPlatformUi = uiPenalty >= 8;
+  const hasNoCulturalIdea = culturalIdeaScore < 5;
+
+  // A cluster must have at least SOME cultural signal to be a narrative
+  const isNarrative = !isMetadata && !isFinancial && !isPlatformUi && !hasNoCulturalIdea;
+
+  // ── BUILD NARRATIVE WHY ──
+  let narrativeWhy = '';
+  if (!isNarrative) {
+    if (isMetadata) narrativeWhy = 'Rejected: Cluster represents metadata or UI labels, not a cultural narrative.';
+    else if (isFinancial) narrativeWhy = 'Rejected: Cluster is primarily financial metrics, not a meme narrative.';
+    else if (isPlatformUi) narrativeWhy = 'Rejected: Cluster is a platform UI label, not human discussion.';
+    else narrativeWhy = 'Rejected: No recognizable cultural idea or meme concept detected.';
+  } else {
+    const strengths: string[] = [];
+    if (culturalIdeaScore >= 15) strengths.push('recognized cultural concept');
+    if (emotionalScore >= 3) strengths.push('emotional engagement');
+    if (conversationalScore >= 3) strengths.push('active discussion');
+    if (humanDiscussionScore >= 5) strengths.push('human discussion signal');
+    if (crossPostScore >= 3) strengths.push('cross-post presence');
+    if (subjectScore >= 3) strengths.push('subject of conversation');
+    narrativeWhy = `Accepted: ${strengths.join(', ') || 'qualifies as a meme narrative'}.`;
+  }
+
+  // ── TOP CONTRIBUTING POSTS ──
+  const topContributingPosts = [...cluster.posts]
+    .sort((a, b) => (b.likes + b.shares * 2 + b.comments) - (a.likes + a.shares * 2 + a.comments))
+    .slice(0, 5)
+    .map((p) => p.title || p.body.slice(0, 100));
+
+  // ── TOP PLATFORMS ──
+  const platformCounts = new Map<string, number>();
+  for (const p of cluster.posts) {
+    platformCounts.set(p.source, (platformCounts.get(p.source) ?? 0) + 1);
+  }
+  const topPlatforms = [...platformCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([src]) => src);
+
+  // ── TREND CAUSE ──
+  const growthPct = computeGrowthPct(cluster, now);
+  const velocity = computeVelocity(cluster);
+  const ageHours = (now - cluster.firstSeen) / 3600000;
+  const trendCauses: string[] = [];
+  if (growthPct > 200) trendCauses.push(`Mentions surged +${growthPct}% in the last 12 hours`);
+  else if (growthPct > 100) trendCauses.push(`Mentions doubled recently (+${growthPct}%)`);
+  else if (growthPct > 50) trendCauses.push(`Steady growth of +${growthPct}%`);
+  if (velocity > 5) trendCauses.push(`High velocity: ${Math.round(velocity)} mentions/hour`);
+  if (cluster.sources.size >= 3) trendCauses.push(`Spread across ${cluster.sources.size} platforms`);
+  if (ageHours < 6) trendCauses.push('Very fresh — detected within the last 6 hours');
+  if (trendCauses.length === 0) trendCauses.push(`First seen ${Math.round(ageHours)}h ago with ${cluster.totalMentions} mentions`);
+  const trendCause = trendCauses.join('. ');
+
+  return {
+    isNarrative,
+    score: semanticTotal,
+    reasons,
+    breakdown,
+    narrativeWhy,
+    topContributingPosts,
+    topPlatforms,
+    trendCause,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// SECTION 7: SCORING (QUALITY + TREND)
+// ══════════════════════════════════════════════════════════════════════
+
+function computeNarrativeQualityScore(cluster: Cluster, now: number, intel: NarrativeIntelligence): { score: number; semanticBreakdown: Record<string, number>; reasons: string[] } {
+  // Platform diversity (0-1)
+  const platformScore = Math.min(cluster.sources.size / 4, 1);
+
+  // Author diversity (0-1)
+  const authorScore = Math.min(cluster.authors.size / 15, 1);
+
+  // Engagement (0-1)
+  const engagementScore = Math.min(cluster.totalEngagement / 500, 1);
+
+  // Growth (0-1)
+  const growthPct = computeGrowthPct(cluster, now);
+  const growthScore = Math.min(Math.max(growthPct, 0) / 300, 1);
+
+  // Freshness (0-1)
+  const ageHours = (now - cluster.lastSeen) / 3600000;
+  const freshnessScore = Math.max(0, 1 - ageHours / 24);
+
+  // Combined narrative quality (0-100)
+  // Weights: 35% semantic (from narrative intelligence), 25% platform, 15% authors, 10% engagement, 10% growth, 5% freshness
+  const raw =
+    (intel.score / 100) * 35 +
+    platformScore * 25 +
+    authorScore * 15 +
+    engagementScore * 10 +
+    growthScore * 10 +
+    freshnessScore * 5;
+
+  const score = Math.round(raw * 100) / 100;
+
+  const reasons: string[] = [...intel.reasons];
+  if (cluster.sources.size >= 3) reasons.push(`Spread across ${cluster.sources.size} platforms`);
+  if (cluster.authors.size >= 5) reasons.push(`${cluster.authors.size} unique creators`);
+
+  return { score, semanticBreakdown: intel.breakdown, reasons };
+}
 
 function computeGrowthPct(cluster: Cluster, now: number): number {
   const half = 12 * 3600 * 1000;
@@ -596,7 +968,7 @@ function capitalize(s: string): string {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 7: ADAPTIVE THRESHOLDS
+// SECTION 8: ADAPTIVE THRESHOLDS
 // ══════════════════════════════════════════════════════════════════════
 
 interface Thresholds {
@@ -677,7 +1049,7 @@ function detectImpossibleThresholds(thresholds: Thresholds, posts: RawPost[], al
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 8: QUALITY FILTER
+// SECTION 9: QUALITY FILTER
 // ══════════════════════════════════════════════════════════════════════
 
 const MAX_NARRATIVES = 15;
@@ -711,129 +1083,198 @@ const BLOCKED_PATTERNS: RegExp[] = [
   /^(boosted|top boosted|most traded|highest volume|trending on|boosted on)$/i,
 ];
 
-function getRejectionReason(cluster: Cluster, now: number, thresholds: Thresholds): string | null {
+interface RejectionResult {
+  rejected: boolean;
+  reason: string;
+  line: string;
+}
+
+function checkRejection(cluster: Cluster, now: number, thresholds: Thresholds): RejectionResult {
+  const normName = normalizeNarrativeName(cluster.canonicalName);
+  const words = normName ? normName.split(/\s+/) : [];
+
+  // CHECK 1: Platforms
   if (cluster.sources.size < thresholds.minPlatforms) {
     if (!(thresholds.allowSinglePlatform && cluster.sources.size === 1)) {
-      return `single platform (need ${thresholds.minPlatforms}+)`;
+      return { rejected: true, reason: `only ${cluster.sources.size} platform(s) [${[...cluster.sources].join(', ')}] — need ${thresholds.minPlatforms}+`, line: 'engine.ts: getRejectionReason → cluster.sources.size < thresholds.minPlatforms' };
     }
   }
-  if (cluster.authors.size < thresholds.minAuthors) return `only ${cluster.authors.size} unique author(s) (need ${thresholds.minAuthors}+)`;
-  if (cluster.totalMentions < thresholds.minMentions) return `only ${cluster.totalMentions} mention(s) (need ${thresholds.minMentions}+)`;
-  if (cluster.totalEngagement < thresholds.minEngagement) return `engagement ${cluster.totalEngagement} below minimum ${thresholds.minEngagement}`;
 
-  const normName = normalizeNarrativeName(cluster.canonicalName);
-  if (!normName || normName.length < 2) return `empty or too short name`;
+  // CHECK 2: Authors
+  if (cluster.authors.size < thresholds.minAuthors) {
+    return { rejected: true, reason: `only ${cluster.authors.size} unique author(s) [${[...cluster.authors].slice(0, 5).join(', ')}${cluster.authors.size > 5 ? '...' : ''}] — need ${thresholds.minAuthors}+`, line: 'engine.ts: getRejectionReason → cluster.authors.size < thresholds.minAuthors' };
+  }
 
-  if (BLOCKED_NAMES.has(normName)) return `generic/blocked name "${normName}"`;
+  // CHECK 3: Mentions
+  if (cluster.totalMentions < thresholds.minMentions) {
+    return { rejected: true, reason: `only ${cluster.totalMentions} mention(s) — need ${thresholds.minMentions}+`, line: 'engine.ts: getRejectionReason → cluster.totalMentions < thresholds.minMentions' };
+  }
 
-  const words = normName.split(/\s+/);
+  // CHECK 4: Engagement
+  if (cluster.totalEngagement < thresholds.minEngagement) {
+    return { rejected: true, reason: `engagement ${cluster.totalEngagement} — below minimum ${thresholds.minEngagement}`, line: 'engine.ts: getRejectionReason → cluster.totalEngagement < thresholds.minEngagement' };
+  }
+
+  // CHECK 5: Empty/short name
+  if (!normName || normName.length < 2) {
+    return { rejected: true, reason: `empty or too short normalized name (was "${cluster.canonicalName}")`, line: 'engine.ts: getRejectionReason → !normName || normName.length < 2' };
+  }
+
+  // CHECK 6: Blocked name (exact match)
+  if (BLOCKED_NAMES.has(normName)) {
+    return { rejected: true, reason: `blocked/generic name "${normName}"`, line: 'engine.ts: getRejectionReason → BLOCKED_NAMES.has(normName)' };
+  }
+
+  // CHECK 7: Contains blocked word
   for (const w of words) {
-    if (BLOCKED_NAMES.has(w)) return `contains blocked word "${w}"`;
+    if (BLOCKED_NAMES.has(w)) {
+      return { rejected: true, reason: `contains blocked word "${w}" in "${normName}"`, line: 'engine.ts: getRejectionReason → BLOCKED_NAMES.has(w) inside word loop' };
+    }
   }
 
-  for (const p of BLOCKED_PATTERNS) {
-    if (p.test(normName)) return `matches blocked pattern`;
+  // CHECK 8: Blocked pattern
+  for (let pi = 0; pi < BLOCKED_PATTERNS.length; pi++) {
+    if (BLOCKED_PATTERNS[pi].test(normName)) {
+      return { rejected: true, reason: `matches blocked pattern #${pi + 1} "${normName}"`, line: 'engine.ts: getRejectionReason → BLOCKED_PATTERNS[pi].test(normName)' };
+    }
   }
 
-  if (words.length === 1 && STOP_WORDS.has(words[0])) return `stop word "${normName}"`;
+  // CHECK 9: Stop word
+  if (words.length === 1 && STOP_WORDS.has(words[0])) {
+    return { rejected: true, reason: `single stop word "${normName}"`, line: 'engine.ts: getRejectionReason → STOP_WORDS.has(words[0])' };
+  }
 
+  // CHECK 10: Trend score
   const trendScore = computeTrendScore(cluster, now);
-  if (trendScore < thresholds.minTrendScore) return `trend score ${trendScore} below minimum ${thresholds.minTrendScore}`;
+  if (trendScore < thresholds.minTrendScore) {
+    return { rejected: true, reason: `trend score ${trendScore} — below minimum ${thresholds.minTrendScore}`, line: 'engine.ts: getRejectionReason → trendScore < thresholds.minTrendScore' };
+  }
 
+  // CHECK 11: Confidence
   const confidencePct = computeConfidence(cluster, now);
-  if (confidencePct < thresholds.minConfidence) return `confidence ${confidencePct}% below minimum ${thresholds.minConfidence}%`;
+  if (confidencePct < thresholds.minConfidence) {
+    return { rejected: true, reason: `confidence ${confidencePct}% — below minimum ${thresholds.minConfidence}%`, line: 'engine.ts: getRejectionReason → confidencePct < thresholds.minConfidence' };
+  }
 
-  return null;
+  return { rejected: false, reason: '', line: '' };
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// SECTION 9: MAIN ANALYSIS
+// SECTION 10: MAIN ANALYSIS
 // ══════════════════════════════════════════════════════════════════════
 
 export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
   const now = Date.now();
   const L = (msg: string) => console.log(`[intel] ${msg}`);
-
-  L('═══════════════════════════════════════════════');
-  L('PIPELINE AUDIT — FULL DIAGNOSTICS');
-  L('═══════════════════════════════════════════════');
-  L('');
+  const SEP = '════════════════════════════════════════════════════════════';
+  const SEP2 = '────────────────────────────────────────────────────────────';
 
   const allAuthors = new Set<string>();
   const allSources = new Set<string>();
   for (const p of posts) { allAuthors.add(p.author); allSources.add(p.source); }
 
-  L(`Stage 0: COLLECTED`);
-  L(`  Posts: ${posts.length}`);
-  L(`  Unique authors: ${allAuthors.size}`);
-  L(`  Platforms: ${allSources.size} (${[...allSources].join(', ')})`);
-  L('');
-
   const bySource = new Map<string, number>();
   for (const p of posts) bySource.set(p.source, (bySource.get(p.source) ?? 0) + 1);
-  L('  Posts by platform:');
+
+  // ── STAGE 0: COLLECTED ──
+  L(SEP);
+  L('  COLLECTED POSTS');
+  L(SEP);
+  L(`  Total:       ${posts.length}`);
+  L(`  Authors:     ${allAuthors.size}`);
+  L(`  Platforms:   ${allSources.size} (${[...allSources].join(', ')})`);
   for (const [src, count] of bySource) L(`    ${src}: ${count}`);
   L('');
 
+  // ── STAGE 1: CLASSIFIER + CLUSTERING ──
   const { clusters: rawClusters, stats: clusterStats } = clusterPosts(posts);
 
-  L(`Stage 1: AFTER CLASSIFIER + CLUSTERING`);
-  L(`  Posts accepted by classifier: ${clusterStats.accepted}`);
+  L(SEP);
+  L('  AFTER CLASSIFIER + CLUSTERING');
+  L(SEP);
+  L(`  Posts accepted by classifier:      ${clusterStats.accepted}`);
   L(`  Posts rejected (metadata/template): ${clusterStats.rejectedMetadata}`);
-  L(`  Posts rejected (classifier): ${clusterStats.rejectedClassifier}`);
-  L(`  Posts rejected (too short for 2-word phrase): ${clusterStats.rejectedShort}`);
-  L(`  Raw clusters created: ${rawClusters.length}`);
+  L(`  Posts rejected (classifier):        ${clusterStats.rejectedClassifier}`);
+  L(`  Posts rejected (too short):         ${clusterStats.rejectedShort}`);
+  L(`  Raw clusters created:               ${rawClusters.length}`);
   L('');
 
+  // ── STAGE 2: ENTITY MERGE ──
   const entityMerged = mergeByEntities(rawClusters);
   const entityMergeCount = rawClusters.length - entityMerged.length;
-  L(`Stage 2: AFTER ENTITY MERGE`);
-  L(`  Clusters: ${entityMerged.length}`);
-  L(`  Merged by shared entity: ${entityMergeCount}`);
+
+  L(SEP);
+  L('  AFTER ENTITY MERGE');
+  L(SEP);
+  L(`  Clusters:       ${entityMerged.length}`);
+  L(`  Merged by entity: ${entityMergeCount}`);
   L('');
 
+  // ── STAGE 3: ADAPTIVE THRESHOLDS ──
   const thresholds = computeAdaptiveThresholds(posts, entityMerged.length, allAuthors, allSources);
-  L(`Stage 3: ADAPTIVE THRESHOLDS`);
-  L(`  minAuthors: ${thresholds.minAuthors}`);
-  L(`  minMentions: ${thresholds.minMentions}`);
-  L(`  minPlatforms: ${thresholds.minPlatforms}`);
-  L(`  minEngagement: ${thresholds.minEngagement}`);
-  L(`  minTrendScore: ${thresholds.minTrendScore}`);
-  L(`  minConfidence: ${thresholds.minConfidence}`);
+
+  L(SEP);
+  L('  ADAPTIVE THRESHOLDS');
+  L(SEP);
+  L(`  minAuthors:         ${thresholds.minAuthors}`);
+  L(`  minMentions:         ${thresholds.minMentions}`);
+  L(`  minPlatforms:        ${thresholds.minPlatforms}`);
+  L(`  minEngagement:       ${thresholds.minEngagement}`);
+  L(`  minTrendScore:       ${thresholds.minTrendScore}`);
+  L(`  minConfidence:       ${thresholds.minConfidence}`);
   L(`  allowSinglePlatform: ${thresholds.allowSinglePlatform}`);
+  const impossibleWarnings = detectImpossibleThresholds(thresholds, posts, allAuthors, allSources);
+  for (const w of impossibleWarnings) L(`  ⚠ ${w}`);
   L('');
 
-  const impossibleWarnings = detectImpossibleThresholds(thresholds, posts, allAuthors, allSources);
-  if (impossibleWarnings.length > 0) {
-    L('  ⚠ IMPOSSIBLE THRESHOLD DETECTED:');
-    for (const w of impossibleWarnings) L(`    ${w}`);
-    L('');
-  }
+  // ── STAGE 4: EVERY CLUSTER ──
+  L(SEP);
+  L('  EVERY CLUSTER — DETAIL');
+  L(SEP);
 
   const rejectCounts: Record<string, number> = {};
   let duplicateCount = 0;
   let emptyNameCount = 0;
-
   const deduped = new Map<string, Cluster>();
-  const clusterDetails: string[] = [];
 
-  for (const cluster of entityMerged) {
+  for (let ci = 0; ci < entityMerged.length; ci++) {
+    const cluster = entityMerged[ci];
     const normKey = normalizeNarrativeName(cluster.canonicalName);
+
+    L(SEP2);
+    L(`  CLUSTER ${ci + 1}: "${cluster.canonicalName}"`);
+    L(SEP2);
+    L(`  Posts:      ${cluster.totalMentions}`);
+    L(`  Authors:    ${cluster.authors.size} (${[...cluster.authors].slice(0, 5).join(', ')}${cluster.authors.size > 5 ? '...' : ''})`);
+    L(`  Platforms:  ${cluster.sources.size} (${[...cluster.sources].join(', ')})`);
+    L(`  Engagement: ${cluster.totalEngagement}`);
+    L(`  Trend:      ${computeTrendScore(cluster, now)}`);
+    L(`  Confidence: ${computeConfidence(cluster, now)}%`);
+    L(`  Phrases:    ${cluster.phrases.slice(0, 5).join(', ')}${cluster.phrases.length > 5 ? '...' : ''}`);
+    L('');
+
+    // CHECK: Empty normalized name
     if (!normKey || normKey.length < 2) {
       emptyNameCount++;
-      clusterDetails.push(`"${cluster.canonicalName}" → REJECTED: empty normalized name`);
+      L(`  Result:     REJECTED`);
+      L(`  Reason:     Empty normalized name (was "${cluster.canonicalName}")`);
+      L(`  Line:       engine.ts: analyzeNarratives → !normKey || normKey.length < 2`);
+      L('');
       continue;
     }
 
-    const reason = getRejectionReason(cluster, now, thresholds);
-    if (reason) {
-      rejectCounts[reason] = (rejectCounts[reason] ?? 0) + 1;
-      clusterDetails.push(
-        `"${cluster.canonicalName}" (${cluster.totalMentions} mentions, ${cluster.authors.size} authors, ${cluster.sources.size} platforms: ${[...cluster.sources].join(',')}, engagement=${cluster.totalEngagement}, trend=${computeTrendScore(cluster, now)}, conf=${computeConfidence(cluster, now)}) → REJECTED: ${reason}`
-      );
+    // CHECK: Quality filters
+    const check = checkRejection(cluster, now, thresholds);
+    if (check.rejected) {
+      rejectCounts[check.reason] = (rejectCounts[check.reason] ?? 0) + 1;
+      L(`  Result:     REJECTED`);
+      L(`  Reason:     ${check.reason}`);
+      L(`  Line:       ${check.line}`);
+      L('');
       continue;
     }
 
+    // CHECK: Deduplication
     const existing = deduped.get(normKey);
     if (existing) {
       duplicateCount++;
@@ -848,21 +1289,23 @@ export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
       if (cluster.canonicalName.length > existing.canonicalName.length) {
         existing.canonicalName = cluster.canonicalName;
       }
-      clusterDetails.push(`"${cluster.canonicalName}" → MERGED into "${existing.canonicalName}"`);
-    } else {
-      deduped.set(normKey, cluster);
-      clusterDetails.push(
-        `"${cluster.canonicalName}" (${cluster.totalMentions} mentions, ${cluster.authors.size} authors, ${cluster.sources.size} platforms, engagement=${cluster.totalEngagement}, trend=${computeTrendScore(cluster, now)}, conf=${computeConfidence(cluster, now)}) → ACCEPTED`
-      );
+      L(`  Result:     MERGED into "${existing.canonicalName}"`);
+      L(`  Reason:     Duplicate normalized name "${normKey}"`);
+      L(`  Line:       engine.ts: analyzeNarratives → deduped.get(normKey) found existing`);
+      L('');
+      continue;
     }
+
+    deduped.set(normKey, cluster);
+    L(`  Result:     PASSED`);
+    L('');
   }
 
-  L(`Stage 4: CLUSTER DETAILS (every cluster)`);
-  for (const d of clusterDetails) L(`  ${d}`);
-  L('');
-
-  L(`Stage 5: REJECTION BREAKDOWN`);
-  L(`  Empty name: ${emptyNameCount}`);
+  // ── STAGE 5: REJECTION BREAKDOWN ──
+  L(SEP);
+  L('  REJECTION BREAKDOWN');
+  L(SEP);
+  L(`  Empty name:       ${emptyNameCount}`);
   L(`  Duplicates merged: ${duplicateCount}`);
   const sortedRejects = Object.entries(rejectCounts).sort((a, b) => b[1] - a[1]);
   for (const [reason, count] of sortedRejects) {
@@ -870,16 +1313,61 @@ export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
   }
   L('');
 
-  L(`Stage 6: SURVIVING CLUSTERS`);
-  L(`  Count: ${deduped.size}`);
+  // ── STAGE 6: NARRATIVE INTELLIGENCE LAYER ──
+  const NARRATIVE_QUALITY_MIN = 70;
+  const narrativeQualityPassed: Cluster[] = [];
+  const narrativeQualityRejected: { cluster: Cluster; reason: string; score: number }[] = [];
+  const narrativeIntelligenceMap = new Map<string, NarrativeIntelligence>();
+
+  L(SEP);
+  L('  NARRATIVE INTELLIGENCE LAYER');
+  L(SEP);
+
+  for (const cluster of deduped.values()) {
+    const intel = computeNarrativeIntelligence(cluster, now);
+    narrativeIntelligenceMap.set(cluster.key, intel);
+    const nq = computeNarrativeQualityScore(cluster, now, intel);
+
+    L(SEP2);
+    L(`  "${cluster.canonicalName}"`);
+    L(`    Narrative Quality Score: ${nq.score} / 100`);
+    L(`    Is Narrative: ${intel.isNarrative}`);
+    L(`    Semantic Breakdown:`);
+    for (const [k, v] of Object.entries(nq.semanticBreakdown)) {
+      L(`      ${k}: ${v}`);
+    }
+    L(`    Reasons:`);
+    for (const r of nq.reasons) L(`      - ${r}`);
+    L(`    Why: ${intel.narrativeWhy}`);
+    L(`    Top Platforms: ${intel.topPlatforms.join(', ')}`);
+    L(`    Trend Cause: ${intel.trendCause}`);
+
+    if (!intel.isNarrative) {
+      narrativeQualityRejected.push({ cluster, reason: intel.narrativeWhy, score: nq.score });
+      L(`    Result: REJECTED (not a meme narrative)`);
+    } else if (nq.score < NARRATIVE_QUALITY_MIN) {
+      narrativeQualityRejected.push({ cluster, reason: `narrative quality ${nq.score} < ${NARRATIVE_QUALITY_MIN} threshold`, score: nq.score });
+      L(`    Result: REJECTED (below ${NARRATIVE_QUALITY_MIN} threshold)`);
+    } else {
+      narrativeQualityPassed.push(cluster);
+      L(`    Result: PASSED ✓`);
+    }
+    L('');
+  }
+
+  L(`  Passed: ${narrativeQualityPassed.length}`);
+  L(`  Rejected: ${narrativeQualityRejected.length}`);
   L('');
 
+  // ── STAGE 7: FINAL NARRATIVES ──
   const narratives: MemeNarrative[] = [];
-  for (const cluster of deduped.values()) {
+  for (const cluster of narrativeQualityPassed) {
     const trendScore = computeTrendScore(cluster, now);
     const growthPct = computeGrowthPct(cluster, now);
     const confidencePct = computeConfidence(cluster, now);
-    const qualityScore = computeQualityScore(cluster, now);
+    const nq = computeNarrativeQualityScore(cluster, now, narrativeIntelligenceMap.get(cluster.key)!);
+    const intel = narrativeIntelligenceMap.get(cluster.key)!;
+    const qualityScore = nq.score;
     const category = detectCategory(cluster.canonicalName);
     const narrative = capitalize(cluster.canonicalName);
     const topPostTitles = [...cluster.posts]
@@ -904,51 +1392,96 @@ export function analyzeNarratives(posts: RawPost[]): MemeNarrative[] {
       category,
       topPostTitles,
       qualityScore,
+      narrativeWhy: intel.narrativeWhy,
+      isNarrative: intel.isNarrative,
+      topContributingPosts: intel.topContributingPosts,
+      topPlatforms: intel.topPlatforms,
+      trendCause: intel.trendCause,
     });
   }
 
   narratives.sort((a, b) => b.qualityScore - a.qualityScore);
   const final = narratives.slice(0, MAX_NARRATIVES);
 
-  L('═══════════════════════════════════════════════');
-  L('VERIFICATION REPORT');
-  L('═══════════════════════════════════════════════');
-  L(`  Collected posts:          ${posts.length}`);
-  L(`  Accepted by classifier:   ${clusterStats.accepted}`);
-  L(`  Clusters created:         ${rawClusters.length}`);
-  L(`  Metadata removed:         ${clusterStats.rejectedMetadata}`);
-  L(`  Duplicates merged:        ${duplicateCount}`);
-  L(`  Rejected (single author): ${rejectCounts['single platform (need 2+)'] ?? 0}`);
-  L(`  Rejected (single platform): ${Object.entries(rejectCounts).filter(([k]) => k.includes('platform')).reduce((s, [, v]) => s + v, 0)}`);
-  L(`  Rejected (generic):       ${Object.entries(rejectCounts).filter(([k]) => k.includes('blocked') || k.includes('generic') || k.includes('stop word')).reduce((s, [, v]) => s + v, 0)}`);
-  L(`  Rejected (low score):     ${(rejectCounts['trend score'] ?? 0) + (Object.entries(rejectCounts).filter(([k]) => k.includes('confidence') || k.includes('trend score') || k.includes('engagement')).reduce((s, [, v]) => s + v, 0))}`);
-  L(`  Final narratives:         ${final.length}`);
-  L('═══════════════════════════════════════════════');
+  // ── FINAL SUMMARY ──
+  L(SEP);
+  L('  SUMMARY');
+  L(SEP);
+  L(`  Collected Posts:       ${posts.length}`);
+  L(`  Extracted Phrases:     (see raw clusters above)`);
+  L(`  Clusters:              ${entityMerged.length}`);
+  L(`  Rejected Generic:      ${Object.entries(rejectCounts).filter(([k]) => k.includes('blocked')).reduce((s, [, v]) => s + v, 0)}`);
+  L(`  Rejected Metadata:     ${clusterStats.rejectedMetadata}`);
+  L(`  Rejected One Author:   ${Object.entries(rejectCounts).filter(([k]) => k.includes('author')).reduce((s, [, v]) => s + v, 0)}`);
+  L(`  Rejected One Platform: ${Object.entries(rejectCounts).filter(([k]) => k.includes('platform')).reduce((s, [, v]) => s + v, 0)}`);
+  L(`  Rejected Low Score:    ${Object.entries(rejectCounts).filter(([k]) => k.includes('trend') || k.includes('confidence') || k.includes('engagement')).reduce((s, [, v]) => s + v, 0)}`);
+  L(`  Rejected Duplicate:    ${duplicateCount}`);
+  L(`  Narrative Intel Rejected: ${narrativeQualityRejected.length} (below ${NARRATIVE_QUALITY_MIN} threshold or not narrative)`);
+  L(`  Final Narratives:      ${final.length}`);
+  L(SEP);
 
   if (final.length === 0) {
     L('');
-    L('WHY ZERO NARRATIVES:');
-    L(`  ${posts.length} posts entered the pipeline.`);
-    L(`  ${clusterStats.rejectedMetadata} were metadata/template text.`);
-    L(`  ${clusterStats.rejectedClassifier} were rejected by classifier.`);
-    L(`  ${clusterStats.accepted} posts survived classification.`);
-    L(`  ${rawClusters.length} clusters were created from those posts.`);
-    L(`  ${entityMergeCount} were merged by shared entities.`);
-    L(`  ${entityMerged.length} clusters survived merging.`);
-    L(`  ${emptyNameCount} had empty names.`);
-    L(`  ${Object.values(rejectCounts).reduce((s, v) => s + v, 0)} were rejected by quality filters.`);
-    L(`  ${deduped.size} survived all filters.`);
-    L(`  ${final.length} narratives produced.`);
-  } else {
+    L('  ╔══════════════════════════════════════════════╗');
+    L('  ║  WHY ZERO NARRATIVES                        ║');
+    L('  ╚══════════════════════════════════════════════╝');
     L('');
-    L('FINAL NARRATIVES:');
-    for (let i = 0; i < final.length; i++) {
-      const n = final[i];
-      L(`  #${i + 1} ${n.narrative}`);
-      L(`       quality=${n.qualityScore} trend=${n.trendScore} conf=${n.confidencePct}% mentions=${n.mentionCount} authors=${n.uniqueAuthors} platforms=${n.sourceCount} engagement=${n.mentionCount}`);
+
+    // Find the LAST rejection — what rule removed the final clusters?
+    const lastRejects = sortedRejects.filter(([, c]) => c > 0);
+    if (lastRejects.length > 0) {
+      const [topReason, topCount] = lastRejects[0];
+      L(`  The #1 rejection rule removed ${topCount} cluster(s):`);
+      L(`  "${topReason}"`);
+      L('');
+    }
+
+    if (narrativeQualityRejected.length > 0) {
+      L(`  Narrative intelligence rejected ${narrativeQualityRejected.length} cluster(s):`);
+      for (const { cluster, score, reason } of narrativeQualityRejected.slice(0, 5)) {
+        L(`    "${cluster.canonicalName}" — score ${score}/100`);
+        L(`      ${reason}`);
+      }
+      L('');
+    }
+
+    L(`  Pipeline flow:`);
+    L(`    ${posts.length} posts`);
+    L(`    ↓ ${clusterStats.rejectedMetadata} metadata/template rejected`);
+    L(`    ↓ ${clusterStats.rejectedClassifier} classifier rejected`);
+    L(`    ↓ ${clusterStats.accepted} accepted → ${rawClusters.length} raw clusters`);
+    L(`    ↓ ${entityMergeCount} entity-merged → ${entityMerged.length} clusters`);
+    L(`    ↓ ${emptyNameCount} empty name`);
+    L(`    ↓ ${Object.values(rejectCounts).reduce((s, v) => s + v, 0)} quality filter rejected`);
+    L(`    ↓ ${duplicateCount} duplicate merged`);
+    L(`    ↓ ${narrativeQualityRejected.length} narrative intelligence rejected (below ${NARRATIVE_QUALITY_MIN} or not narrative)`);
+    L(`    = ${narrativeQualityPassed.length} passed narrative intel → ${final.length} narratives`);
+    L('');
+
+    // Find the exact line responsible for the most rejections
+    if (sortedRejects.length > 0) {
+      const [worstReason] = sortedRejects[0];
+      L(`  HIGHEST-IMPACT REJECTION RULE:`);
+      L(`  "${worstReason}"`);
+      L('');
+      if (worstReason.includes('platform')) L(`  → Line: engine.ts: checkRejection → cluster.sources.size < thresholds.minPlatforms`);
+      else if (worstReason.includes('author')) L(`  → Line: engine.ts: checkRejection → cluster.authors.size < thresholds.minAuthors`);
+      else if (worstReason.includes('mention')) L(`  → Line: engine.ts: checkRejection → cluster.totalMentions < thresholds.minMentions`);
+      else if (worstReason.includes('engagement')) L(`  → Line: engine.ts: checkRejection → cluster.totalEngagement < thresholds.minEngagement`);
+      else if (worstReason.includes('trend')) L(`  → Line: engine.ts: checkRejection → trendScore < thresholds.minTrendScore`);
+      else if (worstReason.includes('confidence')) L(`  → Line: engine.ts: checkRejection → confidencePct < thresholds.minConfidence`);
+      else if (worstReason.includes('blocked')) L(`  → Line: engine.ts: checkRejection → BLOCKED_NAMES.has(normName) or BLOCKED_NAMES.has(w)`);
+      else L(`  → Line: engine.ts: checkRejection → see reason above`);
+    }
+
+    if (narrativeQualityRejected.length > 0 && sortedRejects.length === 0) {
+      L(`  HIGHEST-IMPACT REJECTION RULE:`);
+      L(`  "narrative intelligence below ${NARRATIVE_QUALITY_MIN} threshold or not a meme narrative"`);
+      L('');
+      L(`  → Line: engine.ts: analyzeNarratives → NARRATIVE_QUALITY_MIN threshold + narrative intelligence`);
     }
   }
 
-  L('═══════════════════════════════════════════════');
+  L(SEP);
   return final;
 }

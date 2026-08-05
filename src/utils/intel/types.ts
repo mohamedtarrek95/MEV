@@ -15,6 +15,11 @@ export interface MemeNarrative {
   category: string;
   topPostTitles: string[];
   qualityScore: number;
+  narrativeWhy: string;
+  isNarrative: boolean;
+  topContributingPosts: string[];
+  topPlatforms: string[];
+  trendCause: string;
 }
 
 export interface IntelReport {
