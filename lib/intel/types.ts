@@ -22,74 +22,97 @@ export interface ITrendProvider {
   fetch(): Promise<RawPost[]>;
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// CRYPTO MEME CREATION INTELLIGENCE ENGINE
+// ═══════════════ INVENTOR ═══════════════
+//
+// Invent original Solana meme coin ideas from real crypto events,
+// narratives and community emotions.
 //
 // Every concept MUST originate from a REAL crypto catalyst.
-// The engine thinks like a Pump.fun founder:
+// The engine thinks like a creative crypto founder:
 // "Would I personally spend 2 SOL launching this?"
-//
-// If the answer is NO, the concept is deleted immediately.
-// ══════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
+
+export type CatalystCategory =
+  | 'exchange_hack' | 'bridge_exploit' | 'etf' | 'regulation'
+  | 'whale_movement' | 'ai' | 'gaming' | 'solana_upgrade'
+  | 'ethereum_upgrade' | 'memecoin_mania' | 'gas_fees'
+  | 'network_congestion' | 'pumpfun' | 'defi' | 'nft'
+  | 'stablecoins' | 'layer2' | 'security' | 'liquidity'
+  | 'macro' | 'community_drama' | 'influencer_event';
+
+export type CommunityEmotion =
+  | 'fear' | 'greed' | 'excitement' | 'fomo' | 'hope'
+  | 'frustration' | 'sarcasm' | 'irony' | 'anger'
+  | 'disbelief' | 'relief' | 'hype' | 'confusion';
 
 export interface CryptoCatalyst {
   id: string;
-  event: string;                       // "Solana network congestion spikes"
-  category: string;                    // "solana", "defi", "ai", "hack", etc.
-  severity: number;                    // 0-100, how much attention this is getting
-  posts: RawPost[];                    // People discussing this event
-  dominantEmotion: string;             // fear, greed, frustration, hype, humor
+  event: string;
+  category: CatalystCategory;
+  severity: number;
+  posts: RawPost[];
+  dominantEmotion: CommunityEmotion;
 }
 
 export interface CommunityReaction {
   catalyst: CryptoCatalyst;
-  jokes: string[];                     // What people are joking about
-  sarcasticComments: string[];         // Sarcastic replies
-  funnyNicknames: string[];            // What people are calling things
-  emotionalThemes: string[];           // Recurring emotional patterns
-  viralScreenshots: string[];          // Descriptions of viral content
+  jokes: string[];
+  sarcasticComments: string[];
+  funnyNicknames: string[];
+  emotionalThemes: string[];
 }
 
 export interface MemeConcept {
   id: string;
 
-  // ── The Catalyst ──
-  cryptoCatalyst: string;              // The REAL event this came from
-  catalystCategory: string;            // solana, defi, ai, hack, etc.
+  // ── Token Identity ──
+  name: string;
+  ticker: string;
+  oneSentence: string;
+  backstory: string;
+  coreJoke: string;
+  catchphrase: string;
+  communityNickname: string;
 
-  // ── The Reaction ──
-  communityReaction: string;           // What people are actually saying
-  narrative: string;                   // The emotional narrative
+  // ── Catalyst Origin ──
+  cryptoCatalyst: string;
+  catalystCategory: CatalystCategory;
+  detectedEmotion: CommunityEmotion;
 
-  // ── The Concept ──
-  name: string;                        // "Transaction Goblin"
-  ticker: string;                      // "TXGN"
-  oneSentence: string;                 // "A goblin that eats your pending transactions"
-  memeStory: string;                   // Full story of why this exists
-  coreJoke: string;                    // The punchline
-  coreEmotion: string;                 // The feeling it triggers
+  // ── Why People Buy ──
+  whyFunny: string;
+  whyRelatable: string;
+  whyCryptoNative: string;
+  whyPeoplePostMemes: string;
+  whyInfluencersShare: string;
 
-  // ── Target ──
-  expectedAudience: string;            // Who would buy this
-  whyItCouldTrend: string;             // Why this could hit Pump.fun trending
-
-  // ── Visual ──
-  mascot: string;                      // Character description
-  logoIdea: string;                    // Logo description
-  imagePrompt: string;                 // AI image generation prompt
+  // ── Visual Identity ──
+  mascot: string;
+  visualIdentity: string;
+  logoIdea: string;
+  imagePrompt: string;
+  bannerPrompt: string;
 
   // ── Scoring (0-100) ──
-  launchScore: number;                 // Final composite — would I spend 2 SOL?
-  viralityScore: number;               // How shareable (20%)
-  originalityScore: number;            // How novel (25%)
-  brandability: number;                // Rememberable (10%)
-  competitionLevel: number;            // How many similar tokens (5%)
-  narrativeStrength: number;           // Story strength (15%)
-  visualPotential: number;             // Mascot potential (15%)
-  communityFit: number;                // Crypto degen culture fit (10%)
+  launchScore: number;
+  originality: number;
+  virality: number;
+  visualPotential: number;
+  storyStrength: number;
+  communityPotential: number;
+  brandability: number;
+  cryptoRelevance: number;
+  memePotential: number;
+  competition: number;
+  launchTiming: number;
 
   // ── Competition ──
   existingTokens: number;
+  competitionNote: string;
+
+  // ── Target ──
+  targetAudience: string;
+  launchRecommendation: string;
 
   // ── Evidence ──
   supportingPosts: EvidencePost[];

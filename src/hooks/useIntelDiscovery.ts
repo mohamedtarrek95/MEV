@@ -17,7 +17,7 @@ function readCache(): ConceptReport | null {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const envelope: CacheEnvelope = JSON.parse(raw);
-    if (envelope.version !== 4) { localStorage.removeItem(CACHE_KEY); return null; }
+    if (envelope.version !== 5) { localStorage.removeItem(CACHE_KEY); return null; }
     if (Date.now() - envelope.timestamp > CACHE_TTL_MS) { localStorage.removeItem(CACHE_KEY); return null; }
     return envelope.report;
   } catch {
@@ -28,7 +28,7 @@ function readCache(): ConceptReport | null {
 
 function writeCache(report: ConceptReport) {
   try {
-    const envelope: CacheEnvelope = { version: 4, timestamp: Date.now(), report };
+    const envelope: CacheEnvelope = { version: 5, timestamp: Date.now(), report };
     localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
   } catch { /* ignore */ }
 }

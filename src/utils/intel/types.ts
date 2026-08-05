@@ -17,35 +17,47 @@ export interface CryptoCatalyst {
 export interface MemeConcept {
   id: string;
 
-  cryptoCatalyst: string;
-  catalystCategory: string;
-  communityReaction: string;
-  narrative: string;
-
   name: string;
   ticker: string;
   oneSentence: string;
-  memeStory: string;
+  backstory: string;
   coreJoke: string;
-  coreEmotion: string;
+  catchphrase: string;
+  communityNickname: string;
 
-  expectedAudience: string;
-  whyItCouldTrend: string;
+  cryptoCatalyst: string;
+  catalystCategory: string;
+  detectedEmotion: string;
+
+  whyFunny: string;
+  whyRelatable: string;
+  whyCryptoNative: string;
+  whyPeoplePostMemes: string;
+  whyInfluencersShare: string;
 
   mascot: string;
+  visualIdentity: string;
   logoIdea: string;
   imagePrompt: string;
+  bannerPrompt: string;
 
   launchScore: number;
-  viralityScore: number;
-  originalityScore: number;
-  brandability: number;
-  competitionLevel: number;
-  narrativeStrength: number;
+  originality: number;
+  virality: number;
   visualPotential: number;
-  communityFit: number;
+  storyStrength: number;
+  communityPotential: number;
+  brandability: number;
+  cryptoRelevance: number;
+  memePotential: number;
+  competition: number;
+  launchTiming: number;
 
   existingTokens: number;
+  competitionNote: string;
+
+  targetAudience: string;
+  launchRecommendation: string;
 
   supportingPosts: EvidencePost[];
   sourcesScanned: string[];
@@ -53,12 +65,12 @@ export interface MemeConcept {
   generatedAt: number;
 }
 
-export interface NarrativeSignal {
-  theme: string;
-  strength: number;
-  postCount: number;
-  sourceCount: number;
-  emotion: string;
+export interface CryptoCatalyst {
+  id: string;
+  event: string;
+  category: string;
+  severity: number;
+  dominantEmotion: string;
 }
 
 export interface PipelineDiagnostics {
@@ -87,4 +99,5 @@ export type IntelReport = ConceptReport;
 export type NarrativeCluster = never;
 export type LaunchOpportunity = MemeConcept;
 export type NarrativeReport = ConceptReport;
+export type NarrativeSignal = CryptoCatalyst;
 export type CompetitionData = never;
