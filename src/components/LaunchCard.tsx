@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { LaunchCoin } from '../utils/launch/types';
+import type { BundleApi } from '../hooks/useBundle';
 import { formatAge, formatUsd, getScoreColor, getScoreBg, getTrendIcon, getTrendColor, getWarningColor } from '../hooks/useLaunchRadar';
-import { TokenCreatorModal } from './TokenCreatorModal';
+import { LaunchModal, type LaunchModalData } from './LaunchModal';
 
 function ScoreBar({ score, label }: { score: number; label: string }) {
   return (
@@ -18,11 +19,12 @@ function ScoreBar({ score, label }: { score: number; label: string }) {
 interface LaunchCardProps {
   data: LaunchCoin;
   rank: number;
+  api: BundleApi;
 }
 
-export function LaunchCard({ data, rank }: LaunchCardProps) {
+export function LaunchCard({ data, rank, api }: LaunchCardProps) {
   const { coin, launchScore, probability, scoreBreakdown, narrativeCluster, warnings, trend } = data;
-  const [showCreatorModal, setShowCreatorModal] = useState(false);
+  const [showLaunchModal, setShowLaunchModal] = useState(false);
 
   const rankBadge = rank <= 3
     ? 'border-fuchsia-500/50 bg-fuchsia-950/50 text-fuchsia-300'
@@ -32,6 +34,27 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
 
   const cluster = narrativeCluster;
   const hasCluster = cluster && cluster.count > 1;
+
+  const buildInitialData = useCallback((): Partial<LaunchModalData> => {
+    const narrName = cluster?.narrative || coin.name;
+    const desc = `${coin.name} (${coin.ticker}) — Solana meme coin. ${coin.marketCap > 0 ? `Market cap: ${formatUsd(coin.marketCap)}.` : ''} ${coin.liquidity > 0 ? `Liquidity: ${formatUsd(coin.liquidity)}.` : ''} ${hasCluster ? `Part of the ${narrName} narrative with ${cluster.count} similar launches.` : ''}`;
+    return {
+      name: coin.name,
+      ticker: coin.ticker,
+      description: desc,
+      imageUrl: coin.image || '',
+      buyAmount: 0.1,
+      theme: narrName,
+      tags: [narrName, coin.ticker, 'solana', 'meme'].join(', '),
+      logoPrompt: `${coin.name} meme coin logo, ${narrName.toLowerCase()} character, bold cartoon style, high contrast, transparent background, token icon, crypto meme aesthetic`,
+      bannerPrompt: `${coin.name} meme coin banner, ${narrName.toLowerCase()} themed, vibrant colors, crypto community energy, wide format`,
+    };
+  }, [coin, cluster, hasCluster]);
+
+  const handleLaunch = useCallback((modalData: LaunchModalData) => {
+    void api.launchMemeCoin(modalData.name, modalData.ticker, modalData.description, modalData.imageUrl, modalData.buyAmount);
+    setShowLaunchModal(false);
+  }, [api]);
 
   return (
     <>
@@ -124,7 +147,7 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
         <ScoreBar score={scoreBreakdown.socialScore} label="Social" />
       </div>
 
-      {/* Narrative Launch Details — always shown near score */}
+      {/* Narrative Launch Details */}
       {hasCluster && cluster && (
         <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-950/15 px-3 py-2.5">
           <div className="flex items-center gap-2 mb-2">
@@ -215,25 +238,27 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
         <span className="ml-auto font-mono text-[9px] text-zinc-600 truncate max-w-[120px]">{coin.mint.slice(0, 8)}...{coin.mint.slice(-4)}</span>
       </div>
 
-      {/* Create Token Button */}
+      {/* Create Token Button — opens the SAME Launchpad modal */}
       <div className="mt-3 flex justify-end">
         <button
-          onClick={() => setShowCreatorModal(true)}
-          className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-950/30 px-4 py-2 text-[11px] font-bold text-fuchsia-300 hover:bg-fuchsia-900/40 hover:border-fuchsia-500/60 transition-all"
+          onClick={() => setShowLaunchModal(true)}
+          disabled={api.busy}
+          className="rounded-lg bg-fuchsia-600 px-5 py-2 font-mono text-sm font-bold text-white transition-colors hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Create Token
+          {api.busy ? 'Launching...' : 'Create Token'}
         </button>
       </div>
     </div>
 
-    {/* Token Creator Modal */}
-    {showCreatorModal && (
-      <TokenCreatorModal
-        open={showCreatorModal}
-        data={data}
-        onClose={() => setShowCreatorModal(false)}
-      />
-    )}
+    {/* SAME Launchpad Modal used by Pump.fun Launchpad */}
+    <LaunchModal
+      open={showLaunchModal}
+      title={`Launch ${coin.name} (${coin.ticker})`}
+      initialData={buildInitialData()}
+      busy={api.busy}
+      onLaunch={handleLaunch}
+      onCancel={() => setShowLaunchModal(false)}
+    />
   </>
   );
 }

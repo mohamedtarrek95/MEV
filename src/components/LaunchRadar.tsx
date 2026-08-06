@@ -1,4 +1,5 @@
 import { useLaunchRadar, formatAge, formatUsd, getTrendIcon, getTrendColor } from '../hooks/useLaunchRadar';
+import type { BundleApi } from '../hooks/useBundle';
 import { LaunchCard } from './LaunchCard';
 import type { NarrativeRanking } from '../utils/launch/types';
 
@@ -39,7 +40,7 @@ function NarrativeCard({ n, rank }: { n: NarrativeRanking; rank: number }) {
   );
 }
 
-export function LaunchRadar() {
+export function LaunchRadar({ api }: { api: BundleApi }) {
   const { coins, narratives, loading, error, lastRefresh, totalScanned, diagnostics } = useLaunchRadar();
 
   return (
@@ -118,7 +119,7 @@ export function LaunchRadar() {
 
           <div className="space-y-3">
             {coins.map((c, i) => (
-              <LaunchCard key={c.coin.mint} data={c} rank={i + 1} />
+              <LaunchCard key={c.coin.mint} data={c} rank={i + 1} api={api} />
             ))}
           </div>
         </>

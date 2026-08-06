@@ -122,7 +122,7 @@ export default function App() {
           </ErrorBoundary>
         ) : (
           <ErrorBoundary label="Launch Radar">
-            <LaunchRadar />
+            <LaunchRadar api={b} />
           </ErrorBoundary>
         )}
 
