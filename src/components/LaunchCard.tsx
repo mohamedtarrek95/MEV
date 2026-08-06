@@ -19,7 +19,7 @@ interface LaunchCardProps {
 }
 
 export function LaunchCard({ data, rank }: LaunchCardProps) {
-  const { coin, launchScore, probability, scoreBreakdown, nameCluster, warnings, trend } = data;
+  const { coin, launchScore, probability, scoreBreakdown, narrativeCluster, warnings, trend } = data;
 
   const rankBadge = rank <= 3
     ? 'border-fuchsia-500/50 bg-fuchsia-950/50 text-fuchsia-300'
@@ -61,9 +61,9 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
             }`}>
               {getTrendIcon(trend)} {trend}
             </span>
-            {nameCluster && nameCluster.count > 1 && (
+            {narrativeCluster && narrativeCluster.count > 1 && (
               <span className="rounded-full border border-amber-500/30 bg-amber-950/30 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-300">
-                ×{nameCluster.count} REPEATED
+                {narrativeCluster.narrative} narrative ×{narrativeCluster.count}
               </span>
             )}
           </div>
@@ -117,20 +117,37 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
         <ScoreBar score={scoreBreakdown.holderGrowth} label="Holder Growth" />
         <ScoreBar score={scoreBreakdown.walletDiversity} label="Wallet Div." />
         <ScoreBar score={scoreBreakdown.volumeScore} label="Volume" />
-        <ScoreBar score={scoreBreakdown.repeatedNameScore} label="Name Score" />
+        <ScoreBar score={scoreBreakdown.narrativeScore} label="Narrative" />
         <ScoreBar score={scoreBreakdown.liquidityScore} label="Liquidity" />
         <ScoreBar score={scoreBreakdown.socialScore} label="Social" />
       </div>
 
-      {/* Name Cluster */}
-      {nameCluster && nameCluster.count > 1 && (
+      {/* Narrative Cluster */}
+      {narrativeCluster && narrativeCluster.count > 1 && (
         <div className="mt-2 rounded-md border border-amber-500/20 bg-amber-950/10 px-3 py-2">
-          <div className="text-[9px] uppercase tracking-wider text-amber-500 mb-1">Repeated Launches: {nameCluster.count}</div>
-          <div className="flex gap-3 text-[9px] text-amber-300/70">
-            <span>First: {formatAge((Date.now() - nameCluster.firstLaunch) / 1000)} ago</span>
-            <span>Last: {formatAge((Date.now() - nameCluster.lastLaunch) / 1000)} ago</span>
-            <span>Creators: {nameCluster.uniqueCreators.length}</span>
-            <span>Velocity: {nameCluster.launchVelocity.toFixed(1)}/min</span>
+          <div className="flex items-center gap-3 mb-1">
+            <span className="text-[10px] uppercase tracking-wider text-amber-500 font-bold">
+              {narrativeCluster.narrative} Narrative
+            </span>
+            <span className="text-[9px] text-amber-300/70">
+              {narrativeCluster.count} launches
+            </span>
+            <span className="text-[9px] text-amber-300/70">
+              {narrativeCluster.uniqueCreators.length} creators
+            </span>
+            <span className={`text-[9px] font-bold ${getTrendColor(narrativeCluster.launchVelocity > 1 ? 'rising' : narrativeCluster.launchVelocity > 0.3 ? 'stable' : 'falling')}`}>
+              {narrativeCluster.launchVelocity.toFixed(1)}/min
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {narrativeCluster.variants.slice(0, 8).map((v, i) => (
+              <span key={i} className="rounded border border-amber-500/30 bg-amber-950/20 px-1.5 py-0.5 font-mono text-[8px] text-amber-300/80">
+                {v}
+              </span>
+            ))}
+            {narrativeCluster.variants.length > 8 && (
+              <span className="text-[8px] text-amber-400/60">+{narrativeCluster.variants.length - 8} more</span>
+            )}
           </div>
         </div>
       )}

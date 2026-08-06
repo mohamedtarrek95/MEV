@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LaunchCoin, LaunchReport } from '../utils/launch/types';
+import type { LaunchCoin, LaunchReport, NarrativeRanking } from '../utils/launch/types';
 
 const LAUNCHES_API = '/api/launches?action=launches';
 const REFRESH_INTERVAL_MS = 5000;
@@ -119,6 +119,7 @@ export function useLaunchRadar() {
   return {
     report,
     coins: report?.coins ?? [],
+    narratives: report?.narratives ?? [],
     loading,
     error,
     lastRefresh,

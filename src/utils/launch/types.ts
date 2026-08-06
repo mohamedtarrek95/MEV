@@ -33,15 +33,20 @@ export interface EnrichedCoin {
   priceChange5m: number;
 }
 
-export interface NameCluster {
-  name: string;
-  normalized: string;
+export interface NarrativeCluster {
+  narrative: string;
+  rootKeyword: string;
+  variants: string[];
   count: number;
   firstLaunch: number;
   lastLaunch: number;
   uniqueCreators: string[];
   coins: EnrichedCoin[];
+  avgMarketCap: number;
+  avgVolume: number;
+  avgBuyers: number;
   launchVelocity: number;
+  avgLifetimeSeconds: number;
   repeatedLaunchScore: number;
   creatorDiversity: number;
 }
@@ -61,18 +66,32 @@ export interface LaunchCoin {
     holderGrowth: number;
     walletDiversity: number;
     volumeScore: number;
-    repeatedNameScore: number;
+    narrativeScore: number;
     liquidityScore: number;
     socialScore: number;
   };
-  nameCluster: NameCluster | null;
+  narrativeCluster: NarrativeCluster | null;
   warnings: LaunchWarning[];
   trend: 'rising' | 'stable' | 'falling' | 'new';
+}
+
+export interface NarrativeRanking {
+  narrative: string;
+  rootKeyword: string;
+  count: number;
+  uniqueCreators: number;
+  variants: string[];
+  avgMarketCap: number;
+  avgVolume: number;
+  launchVelocity: number;
+  trend: 'rising' | 'stable' | 'falling' | 'new';
+  coins: EnrichedCoin[];
 }
 
 export interface LaunchReport {
   generatedAt: number;
   coins: LaunchCoin[];
+  narratives: NarrativeRanking[];
   totalScanned: number;
   timeWindow: string;
   providers: Array<{ name: string; sourceId: string; requests: number; collected: number; durationMs: number; lastError: string | null }>;
@@ -80,7 +99,7 @@ export interface LaunchReport {
     pumpfunCount: number;
     dexscreenerCount: number;
     enrichedCount: number;
-    nameClusters: number;
+    narrativeClusters: number;
     warningsFired: number;
   };
 }

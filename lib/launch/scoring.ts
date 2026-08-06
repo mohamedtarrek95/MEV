@@ -1,8 +1,8 @@
-import type { EnrichedCoin, NameCluster, LaunchWarning } from './types.js';
+import type { EnrichedCoin, NarrativeCluster, LaunchWarning } from './types.js';
 
 export function calculateLaunchScore(
   coin: EnrichedCoin,
-  cluster: NameCluster | null,
+  cluster: NarrativeCluster | null,
 ): {
   launchScore: number;
   probability: string;
@@ -11,7 +11,7 @@ export function calculateLaunchScore(
     holderGrowth: number;
     walletDiversity: number;
     volumeScore: number;
-    repeatedNameScore: number;
+    narrativeScore: number;
     liquidityScore: number;
     socialScore: number;
   };
@@ -29,7 +29,7 @@ export function calculateLaunchScore(
   const holderGrowth = scoreHolderGrowth(coin);
   const walletDiversity = scoreWalletDiversity(coin);
   const volumeScore = scoreVolume(coin);
-  const repeatedNameScore = scoreRepeatedName(cluster);
+  const narrativeScore = scoreNarrative(cluster);
   const liquidityScore = scoreLiquidity(coin);
   const socialScore = scoreSocial(coin);
 
@@ -38,7 +38,7 @@ export function calculateLaunchScore(
     holderGrowth * 0.20 +
     walletDiversity * 0.15 +
     volumeScore * 0.15 +
-    repeatedNameScore * 0.10 +
+    narrativeScore * 0.10 +
     liquidityScore * 0.10 +
     socialScore * 0.05
   );
@@ -56,7 +56,7 @@ export function calculateLaunchScore(
   return {
     launchScore,
     probability,
-    scoreBreakdown: { buyerGrowth, holderGrowth, walletDiversity, volumeScore, repeatedNameScore, liquidityScore, socialScore },
+    scoreBreakdown: { buyerGrowth, holderGrowth, walletDiversity, volumeScore, narrativeScore, liquidityScore, socialScore },
     warnings,
     trend,
   };
@@ -97,7 +97,7 @@ function scoreVolume(coin: EnrichedCoin): number {
   return 100;
 }
 
-function scoreRepeatedName(cluster: NameCluster | null): number {
+function scoreNarrative(cluster: NarrativeCluster | null): number {
   if (!cluster || cluster.count <= 1) return 10;
   return Math.min(100, cluster.repeatedLaunchScore);
 }
@@ -175,7 +175,7 @@ function detectWarnings(coin: EnrichedCoin): LaunchWarning[] {
   return warnings;
 }
 
-function detectTrend(coin: EnrichedCoin, cluster: NameCluster | null): 'rising' | 'stable' | 'falling' | 'new' {
+function detectTrend(coin: EnrichedCoin, cluster: NarrativeCluster | null): 'rising' | 'stable' | 'falling' | 'new' {
   if (coin.ageSeconds < 120) return 'new';
   if (coin.buys5m > coin.sells5m * 2) return 'rising';
   if (coin.sells5m > coin.buys5m * 2) return 'falling';

@@ -1,8 +1,46 @@
-import { useLaunchRadar, formatAge, formatUsd } from '../hooks/useLaunchRadar';
+import { useLaunchRadar, formatAge, formatUsd, getTrendIcon, getTrendColor } from '../hooks/useLaunchRadar';
 import { LaunchCard } from './LaunchCard';
+import type { NarrativeRanking } from '../utils/launch/types';
+
+function NarrativeCard({ n, rank }: { n: NarrativeRanking; rank: number }) {
+  const trendColor = getTrendColor(n.trend);
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 hover:border-zinc-700 transition-colors">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] font-black text-zinc-500">#{rank}</span>
+          <span className="font-mono text-sm font-bold text-zinc-100">{n.narrative}</span>
+          <span className={`font-mono text-[9px] font-bold ${trendColor}`}>
+            {getTrendIcon(n.trend)} {n.trend}
+          </span>
+        </div>
+        <div className="text-right">
+          <span className="font-mono text-lg font-black text-amber-400">{n.count}</span>
+          <span className="text-[9px] text-zinc-500 ml-1">launches</span>
+        </div>
+      </div>
+      <div className="mt-1.5 flex items-center gap-3 text-[9px] text-zinc-500">
+        <span>{n.uniqueCreators} creators</span>
+        <span>{n.launchVelocity.toFixed(1)}/min</span>
+        <span>avg MC {formatUsd(n.avgMarketCap)}</span>
+        <span>avg Vol {formatUsd(n.avgVolume)}</span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        {n.variants.slice(0, 10).map((v, i) => (
+          <span key={i} className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 font-mono text-[8px] text-zinc-400">
+            {v}
+          </span>
+        ))}
+        {n.variants.length > 10 && (
+          <span className="text-[8px] text-zinc-600">+{n.variants.length - 10} more</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function LaunchRadar() {
-  const { coins, loading, error, lastRefresh, totalScanned, diagnostics } = useLaunchRadar();
+  const { coins, narratives, loading, error, lastRefresh, totalScanned, diagnostics } = useLaunchRadar();
 
   return (
     <div>
@@ -36,7 +74,7 @@ export function LaunchRadar() {
           <span>Pump.fun: {diagnostics.pumpfunCount}</span>
           <span>DexScreener: {diagnostics.dexscreenerCount}</span>
           <span>Enriched: {diagnostics.enrichedCount}</span>
-          <span>Clusters: {diagnostics.nameClusters}</span>
+          <span>Narratives: {diagnostics.narrativeClusters}</span>
           <span>Warnings: {diagnostics.warningsFired}</span>
         </div>
       )}
@@ -60,6 +98,20 @@ export function LaunchRadar() {
         </div>
       ) : (
         <>
+          {/* Narrative Rankings */}
+          {narratives.length > 0 && (
+            <div className="mb-4">
+              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                Narrative Rankings — duplicate meme ideas detected
+              </h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {narratives.map((n, i) => (
+                  <NarrativeCard key={n.narrative} n={n} rank={i + 1} />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mb-3 rounded-lg border border-emerald-500/20 bg-emerald-950/10 px-3 py-2 text-[10px] text-emerald-300">
             {coins.length} candidate{coins.length !== 1 ? 's' : ''} from {totalScanned} launches — sorted by probability of success
           </div>
@@ -80,7 +132,7 @@ export function LaunchRadar() {
           <div><span className="font-semibold text-zinc-400">20%</span> Holder Growth</div>
           <div><span className="font-semibold text-zinc-400">15%</span> Wallet Diversity</div>
           <div><span className="font-semibold text-zinc-400">15%</span> Volume</div>
-          <div><span className="font-semibold text-zinc-400">10%</span> Repeated Name</div>
+          <div><span className="font-semibold text-zinc-400">10%</span> Narrative Score</div>
           <div><span className="font-semibold text-zinc-400">10%</span> Liquidity</div>
           <div><span className="font-semibold text-zinc-400">5%</span> Social Links</div>
           <div><span className="font-semibold text-zinc-400">-</span> Warning Penalties</div>
@@ -90,12 +142,13 @@ export function LaunchRadar() {
       {/* How it works */}
       <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
         <div className="text-[9px] uppercase tracking-wider text-zinc-600 mb-2">How It Works</div>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-[9px] text-zinc-500">
+        <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 text-[9px] text-zinc-500">
           <div><span className="font-semibold text-zinc-400">1. Scan</span> — Pump.fun new launches every 5s</div>
           <div><span className="font-semibold text-zinc-400">2. Enrich</span> — DexScreener volume/buys/sells</div>
-          <div><span className="font-semibold text-zinc-400">3. Detect</span> — Repeated names + creator history</div>
+          <div><span className="font-semibold text-zinc-400">3. Cluster</span> — Group same meme ideas via fuzzy matching</div>
           <div><span className="font-semibold text-zinc-400">4. Score</span> — Probability of going viral</div>
-          <div><span className="font-semibold text-zinc-400">5. Warn</span> — Rug risk, bots, low liquidity</div>
+          <div><span className="font-semibold text-zinc-400">5. Rank</span> — Narratives first, then coins</div>
+          <div><span className="font-semibold text-zinc-400">6. Warn</span> — Rug risk, bots, low liquidity</div>
         </div>
       </div>
     </div>

@@ -1,12 +1,13 @@
-import type { RawLaunch, EnrichedCoin, LaunchCoin, LaunchReport, NameCluster, ProviderStatus } from './types.js';
+import type { RawLaunch, EnrichedCoin, LaunchCoin, LaunchReport, NarrativeCluster, NarrativeRanking, ProviderStatus } from './types.js';
 import { fetchPumpfun } from './providers/pumpfun.js';
 import { fetchDexScreenerBatch, type DexEnrichment } from './providers/dexscreener.js';
-import { detectNameClusters, normalizeForCluster, findCluster } from './names.js';
+import { detectNarrativeClusters, findNarrativeCluster } from './names.js';
 import { calculateLaunchScore } from './scoring.js';
 
 const MAX_AGE_MS = 60 * 60 * 1000;
 const RAPID_ACCELERATION_BUY_RATIO = 3;
 const MAX_RESULTS = 50;
+const MAX_NARRATIVES = 20;
 
 function enrichCoin(raw: RawLaunch, dex: DexEnrichment | null, now: number): EnrichedCoin {
   const ageSeconds = Math.max(0, (now - raw.createdAt) / 1000);
@@ -49,6 +50,42 @@ function enrichCoin(raw: RawLaunch, dex: DexEnrichment | null, now: number): Enr
 function isAccelerating(coin: EnrichedCoin): boolean {
   if (coin.buys5m === 0) return false;
   return coin.buys5m > coin.sells5m * RAPID_ACCELERATION_BUY_RATIO;
+}
+
+function rankNarratives(clusters: Map<string, NarrativeCluster>): NarrativeRanking[] {
+  const rankings: NarrativeRanking[] = [];
+  const now = Date.now();
+
+  for (const [, cluster] of clusters) {
+    if (cluster.count < 2) continue;
+
+    const creators = cluster.uniqueCreators.length;
+    const trend = cluster.launchVelocity > 1 ? 'rising'
+      : cluster.launchVelocity > 0.3 ? 'stable'
+      : 'falling';
+
+    rankings.push({
+      narrative: cluster.narrative,
+      rootKeyword: cluster.rootKeyword,
+      count: cluster.count,
+      uniqueCreators: creators,
+      variants: cluster.variants,
+      avgMarketCap: cluster.avgMarketCap,
+      avgVolume: cluster.avgVolume,
+      launchVelocity: cluster.launchVelocity,
+      trend: trend as 'rising' | 'stable' | 'falling',
+      coins: cluster.coins,
+    });
+  }
+
+  rankings.sort((a, b) => {
+    // Score: velocity * 0.4 + count * 0.3 + creators * 0.3
+    const scoreA = a.launchVelocity * 0.4 + a.count * 0.3 + a.uniqueCreators * 0.3;
+    const scoreB = b.launchVelocity * 0.4 + b.count * 0.3 + b.uniqueCreators * 0.3;
+    return scoreB - scoreA;
+  });
+
+  return rankings.slice(0, MAX_NARRATIVES);
 }
 
 export async function scanLaunches(): Promise<{
@@ -116,14 +153,14 @@ export async function scanLaunches(): Promise<{
     enriched.push(enrichCoin(raw, dex, now));
   }
 
-  const clusters = detectNameClusters(enriched);
+  const clusters = detectNarrativeClusters(enriched);
+  const narratives = rankNarratives(clusters);
 
   const candidates: LaunchCoin[] = [];
   let warningsFired = 0;
 
   for (const coin of enriched) {
-    const norm = normalizeForCluster(coin.name);
-    const cluster = findCluster(norm, clusters);
+    const cluster = findNarrativeCluster(coin.name, clusters);
 
     const ageMs = now - coin.launchTime;
     const isWithinWindow = ageMs <= 10 * 60 * 1000;
@@ -137,7 +174,7 @@ export async function scanLaunches(): Promise<{
       launchScore,
       probability,
       scoreBreakdown,
-      nameCluster: cluster,
+      narrativeCluster: cluster,
       warnings,
       trend,
     });
@@ -149,6 +186,7 @@ export async function scanLaunches(): Promise<{
   const report: LaunchReport = {
     generatedAt: now,
     coins: top,
+    narratives,
     totalScanned: enriched.length,
     timeWindow: '10m',
     providers: [pumpfunStatus, dexStatus],
@@ -156,14 +194,14 @@ export async function scanLaunches(): Promise<{
       pumpfunCount: rawLaunches.length,
       dexscreenerCount: dexData.size,
       enrichedCount: enriched.length,
-      nameClusters: clusters.size,
+      narrativeClusters: clusters.size,
       warningsFired,
     },
   };
 
   const totalDuration = Date.now() - overallStart;
-  console.log(`[launch-radar] ${enriched.length} coins scanned → ${top.length} candidates (${totalDuration}ms)`);
-  console.log(`[launch-radar] ${clusters.size} name clusters, ${warningsFired} warnings`);
+  console.log(`[launch-radar] ${enriched.length} coins scanned → ${top.length} candidates, ${narratives.length} narratives (${totalDuration}ms)`);
+  console.log(`[launch-radar] ${clusters.size} narrative clusters, ${warningsFired} warnings`);
 
   return { report, pumpfunStatus, dexStatus };
 }
