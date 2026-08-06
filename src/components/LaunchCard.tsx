@@ -30,6 +30,9 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
     ? 'border-cyan-500/40 bg-cyan-950/40 text-cyan-300'
     : 'border-zinc-700 bg-zinc-800 text-zinc-400';
 
+  const cluster = narrativeCluster;
+  const hasCluster = cluster && cluster.count > 1;
+
   return (
     <>
     <div className={`rounded-xl border p-4 transition-all hover:scale-[1.005] ${
@@ -65,11 +68,6 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
             }`}>
               {getTrendIcon(trend)} {trend}
             </span>
-            {narrativeCluster && narrativeCluster.count > 1 && (
-              <span className="rounded-full border border-amber-500/30 bg-amber-950/30 px-1.5 py-0.5 font-mono text-[9px] font-bold text-amber-300">
-                {narrativeCluster.narrative} narrative ×{narrativeCluster.count}
-              </span>
-            )}
           </div>
 
           <div className="mt-1 flex items-center gap-3 text-[10px] text-zinc-500">
@@ -126,31 +124,57 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
         <ScoreBar score={scoreBreakdown.socialScore} label="Social" />
       </div>
 
-      {/* Narrative Cluster */}
-      {narrativeCluster && narrativeCluster.count > 1 && (
-        <div className="mt-2 rounded-md border border-amber-500/20 bg-amber-950/10 px-3 py-2">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="text-[10px] uppercase tracking-wider text-amber-500 font-bold">
-              {narrativeCluster.narrative} Narrative
+      {/* Narrative Launch Details — always shown near score */}
+      {hasCluster && cluster && (
+        <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-950/15 px-3 py-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">
+              {cluster.narrative}
             </span>
-            <span className="text-[9px] text-amber-300/70">
-              {narrativeCluster.count} launches
-            </span>
-            <span className="text-[9px] text-amber-300/70">
-              {narrativeCluster.uniqueCreators.length} creators
-            </span>
-            <span className={`text-[9px] font-bold ${getTrendColor(narrativeCluster.launchVelocity > 1 ? 'rising' : narrativeCluster.launchVelocity > 0.3 ? 'stable' : 'falling')}`}>
-              {narrativeCluster.launchVelocity.toFixed(1)}/min
-            </span>
+            <span className="text-[9px] uppercase tracking-wider text-amber-600">Narrative</span>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {narrativeCluster.variants.slice(0, 8).map((v, i) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
+            <div>
+              <div className="text-[8px] uppercase text-zinc-600">Launches Created</div>
+              <div className="font-mono text-[11px] font-bold text-amber-300">{cluster.count}</div>
+            </div>
+            <div>
+              <div className="text-[8px] uppercase text-zinc-600">Unique Creators</div>
+              <div className="font-mono text-[11px] font-bold text-amber-300">{cluster.uniqueCreators.length}</div>
+            </div>
+            <div>
+              <div className="text-[8px] uppercase text-zinc-600">First Launch</div>
+              <div className="font-mono text-[11px] font-bold text-zinc-300">{formatAge((Date.now() / 1000) - cluster.firstLaunch)} ago</div>
+            </div>
+            <div>
+              <div className="text-[8px] uppercase text-zinc-600">Latest Launch</div>
+              <div className="font-mono text-[11px] font-bold text-zinc-300">{formatAge((Date.now() / 1000) - cluster.lastLaunch)} ago</div>
+            </div>
+            <div>
+              <div className="text-[8px] uppercase text-zinc-600">Launch Velocity</div>
+              <div className={`font-mono text-[11px] font-bold ${getTrendColor(cluster.launchVelocity > 1 ? 'rising' : cluster.launchVelocity > 0.3 ? 'stable' : 'falling')}`}>
+                {cluster.launchVelocity.toFixed(1)}/min
+              </div>
+            </div>
+            <div>
+              <div className="text-[8px] uppercase text-zinc-600">Trend</div>
+              <div className={`font-mono text-[11px] font-bold ${getTrendColor(cluster.launchVelocity > 1 ? 'rising' : cluster.launchVelocity > 0.3 ? 'stable' : 'falling')}`}>
+                {cluster.launchVelocity > 1 ? '↗ Rising' : cluster.launchVelocity > 0.3 ? '→ Stable' : '↘ Falling'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[8px] uppercase text-zinc-600">Confidence</div>
+              <div className="font-mono text-[11px] font-bold text-emerald-400">{scoreBreakdown.narrativeScore}%</div>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {cluster.variants.slice(0, 8).map((v, i) => (
               <span key={i} className="rounded border border-amber-500/30 bg-amber-950/20 px-1.5 py-0.5 font-mono text-[8px] text-amber-300/80">
                 {v}
               </span>
             ))}
-            {narrativeCluster.variants.length > 8 && (
-              <span className="text-[8px] text-amber-400/60">+{narrativeCluster.variants.length - 8} more</span>
+            {cluster.variants.length > 8 && (
+              <span className="text-[8px] text-amber-400/60">+{cluster.variants.length - 8} more</span>
             )}
           </div>
         </div>
@@ -192,10 +216,10 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
       </div>
 
       {/* Create Token Button */}
-      <div className="mt-2 flex justify-end">
+      <div className="mt-3 flex justify-end">
         <button
           onClick={() => setShowCreatorModal(true)}
-          className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-950/30 px-3 py-1.5 text-[10px] font-bold text-fuchsia-300 hover:bg-fuchsia-900/40 transition-colors"
+          className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-950/30 px-4 py-2 text-[11px] font-bold text-fuchsia-300 hover:bg-fuchsia-900/40 hover:border-fuchsia-500/60 transition-all"
         >
           Create Token
         </button>
