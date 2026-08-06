@@ -8,10 +8,11 @@ import { ProgressBar } from './components/ProgressBar';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PumpLaunchpad } from './components/PumpLaunchpad';
 import { LaunchRadar } from './components/LaunchRadar';
+import { TrendingSuggestor } from './components/TrendingSuggestor';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { formatToken } from './utils/format';
 
-type Tab = 'bundle' | 'pump' | 'suggest';
+type Tab = 'bundle' | 'pump' | 'suggest' | 'intel';
 
 export default function App() {
   const b = useBundle();
@@ -60,6 +61,9 @@ export default function App() {
           </button>
           <button onClick={() => setTab('suggest')} className={tabCls(tab === 'suggest')}>
             Launch Radar
+          </button>
+          <button onClick={() => setTab('intel')} className={tabCls(tab === 'intel')}>
+            Meme Intel
           </button>
         </nav>
 
@@ -112,6 +116,10 @@ export default function App() {
           </>
         ) : tab === 'pump' ? (
           <PumpLaunchpad api={b} />
+        ) : tab === 'intel' ? (
+          <ErrorBoundary label="Meme Intel">
+            <TrendingSuggestor api={b} />
+          </ErrorBoundary>
         ) : (
           <ErrorBoundary label="Launch Radar">
             <LaunchRadar />
