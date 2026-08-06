@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { LaunchCoin } from '../utils/launch/types';
 import { formatAge, formatUsd, getScoreColor, getScoreBg, getTrendIcon, getTrendColor, getWarningColor } from '../hooks/useLaunchRadar';
+import { TokenCreatorModal } from './TokenCreatorModal';
 
 function ScoreBar({ score, label }: { score: number; label: string }) {
   return (
@@ -20,6 +22,7 @@ interface LaunchCardProps {
 
 export function LaunchCard({ data, rank }: LaunchCardProps) {
   const { coin, launchScore, probability, scoreBreakdown, narrativeCluster, warnings, trend } = data;
+  const [showCreatorModal, setShowCreatorModal] = useState(false);
 
   const rankBadge = rank <= 3
     ? 'border-fuchsia-500/50 bg-fuchsia-950/50 text-fuchsia-300'
@@ -28,6 +31,7 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
     : 'border-zinc-700 bg-zinc-800 text-zinc-400';
 
   return (
+    <>
     <div className={`rounded-xl border p-4 transition-all hover:scale-[1.005] ${
       warnings.some((w) => w.severity === 'high')
         ? 'border-red-500/30 bg-red-950/10'
@@ -186,6 +190,26 @@ export function LaunchCard({ data, rank }: LaunchCardProps) {
         )}
         <span className="ml-auto font-mono text-[9px] text-zinc-600 truncate max-w-[120px]">{coin.mint.slice(0, 8)}...{coin.mint.slice(-4)}</span>
       </div>
+
+      {/* Create Token Button */}
+      <div className="mt-2 flex justify-end">
+        <button
+          onClick={() => setShowCreatorModal(true)}
+          className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-950/30 px-3 py-1.5 text-[10px] font-bold text-fuchsia-300 hover:bg-fuchsia-900/40 transition-colors"
+        >
+          Create Token
+        </button>
+      </div>
     </div>
+
+    {/* Token Creator Modal */}
+    {showCreatorModal && (
+      <TokenCreatorModal
+        open={showCreatorModal}
+        data={data}
+        onClose={() => setShowCreatorModal(false)}
+      />
+    )}
+  </>
   );
 }
